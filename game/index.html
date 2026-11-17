@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON HARBOR — an open-world crime game</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #14141f;
+    font-family: 'Segoe UI', Arial, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  /* --- HUD --- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #top-right { position: absolute; top: 14px; right: 16px; text-align: right; }
+  #money { font-size: 30px; font-weight: 800; color: #7dff8a;
+    text-shadow: 2px 2px 0 #000; }
+  #stars { font-size: 26px; letter-spacing: 4px; color: #ffd700;
+    text-shadow: 2px 2px 0 #000; }
+  #speed { font-size: 18px; font-weight: 700; text-shadow: 2px 2px 0 #000; }
+  #health-wrap { position: absolute; top: 14px; left: 16px; width: 220px; }
+  #health-bar { height: 16px; background: rgba(0,0,0,.6); border: 2px solid #fff;
+    border-radius: 8px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #39d353; }
+  #health-text { font-size: 13px; font-weight: 700; text-shadow: 1px 1px 0 #000; }
+  #ammo { font-size: 15px; font-weight: 700; margin-top: 4px;
+    text-shadow: 1px 1px 0 #000; }
+  #objective { position: absolute; left: 16px; bottom: 190px; max-width: 420px;
+    font-size: 16px; font-weight: 700; background: rgba(0,0,0,.55);
+    padding: 8px 12px; border-left: 4px solid #ffe14d; border-radius: 4px; }
+  #timer { position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+    font-size: 26px; font-weight: 800; color: #ff6a6a; display: none;
+    text-shadow: 2px 2px 0 #000; }
+  #flash { position: absolute; left: 50%; top: 64px; transform: translateX(-50%);
+    font-size: 18px; font-weight: 700; color: #ffe14d; opacity: 0;
+    text-shadow: 2px 2px 0 #000; transition: opacity .4s; white-space: nowrap; }
+  #minimap { position: absolute; left: 16px; bottom: 16px; width: 160px; height: 160px;
+    border: 3px solid rgba(255,255,255,.7); border-radius: 8px;
+    background: #14141f; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    margin: -11px 0 0 -11px; display: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute;
+    background: #fff; box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
+  #help { position: absolute; right: 16px; bottom: 16px; font-size: 12px;
+    text-align: right; opacity: .8; text-shadow: 1px 1px 0 #000; line-height: 1.5; }
+  /* --- Screens --- */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; background: rgba(10, 8, 24, .82); padding: 20px; }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px;
+    background: linear-gradient(90deg, #ff4fd8, #39d5ff, #ffe14d);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 30px rgba(255,79,216,.35); }
+  .screen h2 { font-size: 40px; margin: 0; letter-spacing: 4px; color: #ff4444;
+    text-shadow: 3px 3px 0 #000; }
+  .screen p { max-width: 560px; font-size: 17px; line-height: 1.6; color: #e8e8f0; }
+  .screen .controls { font-size: 14px; color: #b8b8cc; line-height: 1.9; }
+  .screen button { pointer-events: auto; font-size: 20px; font-weight: 800;
+    padding: 14px 42px; margin: 8px; border: none; border-radius: 8px;
+    cursor: pointer; background: #ff4fd8; color: #fff;
+    box-shadow: 0 4px 0 #a02080; }
+  .screen button:hover { filter: brightness(1.15); }
+  .screen button.secondary { background: #39d5ff; box-shadow: 0 4px 0 #1a6a80; }
+  #pause-screen, #busted-screen, #complete-screen { display: none; }
+  #continue-btn { display: none; }
+  .big-money { font-size: 34px; font-weight: 800; color: #7dff8a; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "./three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="health-wrap">
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="health-text">100</div>
+    <div id="ammo">Ammo 48 / ∞</div>
+  </div>
+  <div id="top-right">
+    <div id="money">$0</div>
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="speed">On foot</div>
+  </div>
+  <div id="timer"></div>
+  <div id="flash"></div>
+  <div id="objective">Press Start and take your first job.</div>
+  <canvas id="minimap" width="160" height="160"></canvas>
+  <div id="crosshair"></div>
+  <div id="help">WASD move/drive · Mouse drag camera · Click/F shoot<br>
+  E steal car / get out · Shift run · Space handbrake<br>Esc pause · M mute</div>
+</div>
+
+<div id="title-screen" class="screen">
+  <h1>NEON HARBOR</h1>
+  <p id="story-text">Ray has nothing but a borrowed jacket and a debt to Mama Sari. One night of work in Neon Harbor can clear it — if the cops stay off his back.</p>
+  <p class="controls">WASD move &amp; drive · Mouse drag to look · Click / F shoot · E steal a car<br>
+  Shift run · Space handbrake · Esc pause · M mute<br>
+  Finish all 3 jobs for Mama Sari: steal a car, run the dock pickup, beat the Vipers.</p>
+  <div>
+    <button id="start-btn">▶ START</button>
+    <button id="continue-btn" class="secondary">Continue</button>
+  </div>
+</div>
+
+<div id="pause-screen" class="screen">
+  <h1>PAUSED</h1>
+  <p>Neon Harbor waits for no one — except right now.</p>
+  <div>
+    <button id="resume-btn">Resume</button>
+    <button id="restart-btn" class="secondary">Restart from start</button>
+  </div>
+</div>
+
+<div id="busted-screen" class="screen">
+  <h2 id="busted-title">BUSTED!</h2>
+  <p id="busted-text">The Harbor PD caught you.</p>
+  <div><button id="busted-btn">Get back out there</button></div>
+</div>
+
+<div id="complete-screen" class="screen">
+  <h1>STORY COMPLETE</h1>
+  <p>All three jobs done. The Vipers are finished, the heat is off, and Neon Harbor is Ray's. Mama Sari's debt is paid — with interest.</p>
+  <p class="big-money">Final cash: <span id="complete-money">$2,500</span></p>
+  <div><button id="again-btn">Play again</button></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
