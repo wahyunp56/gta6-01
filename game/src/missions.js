@@ -1,138 +1,233 @@
-// Missions and story for NEON HARBOR.
-// Ray, a harbor kid with empty pockets, works for Mama Sari, the garage boss
-// who runs the Neon Harbor crew. Three jobs, in order, then the story closes.
-// Each mission sets a waypoint, an objective line and a win condition.
-import { PLACES, makeMarker } from './world.js';
-import { spawnRivals, clearRivals } from './combat.js';
-import { addWanted, clearPolice } from './police.js';
+// missions.js — Ray's debt to Mama Sari, in three jobs.
+//
+//  1. First Wheels — steal any car, deliver it to the garage.
+//  2. The Pickup — grab the package at Pier 9 on foot, back to the garage
+//     before a 90-second timer runs out.
+//  3. Harbor Heat — the Vipers ambush the garage; drop all five, then lose
+//     the heat at the safehouse while wanted 3.
+//
+// The waypoint beacon (a glowing column + ground ring) always marks where
+// to go next, and the HUD objective line says the same in words.
 
-export const STORY = {
-  title: 'NEON HARBOR',
-  intro: 'Ray has nothing but a borrowed jacket and a debt to Mama Sari. ' +
-    'One night of work in Neon Harbor can clear it — if the cops stay off his back.',
-  crew: 'Mama Sari runs the garage. Dax runs the dock. The Vipers run the streets.',
-};
+import * as THREE from 'three';
+import { dist2d } from './random.js';
 
-export function createMissions(G) {
+export const REWARDS = [500, 800, 1500];
+const PICKUP_RADIUS = 3;
+const GARAGE_RADIUS = 12;
+const SAFEHOUSE_RADIUS = 12;
+const RETURN_SECONDS = 90;
+
+/** Build the floating waypoint beacon (column, ring, spinning diamond). */
+function buildBeacon(scene) {
+  const group = new THREE.Group();
+  const column = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 1.6, 26, 16, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd23e, transparent: true, opacity: 0.22,
+      side: THREE.DoubleSide, depthWrite: false,
+    }),
+  );
+  column.position.y = 13;
+  group.add(column);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.2, 3.2, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd23e, transparent: true, opacity: 0.8,
+      side: THREE.DoubleSide, depthWrite: false,
+    }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.15;
+  group.add(ring);
+  const gem = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.9),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+  );
+  gem.position.y = 9;
+  group.add(gem);
+  group.userData.gem = gem;
+  group.userData.ring = ring;
+  group.visible = false;
+  scene.add(group);
+  return group;
+}
+
+export function createMissions(scene) {
   return {
-    index: 0,           // 0,1,2 = mission number; 3 = story complete
-    state: 'intro',     // intro | active | done
-    timer: 0,           // mission 2 countdown
-    rivalsLeft: 0,
-    marker: null,
-    markerPos: null,
-    objective: 'Press Start and take your first job.',
-    complete: false,
+    index: 0,
+    stage: 'steal',
+    timer: 0,
+    timerMax: RETURN_SECONDS,
+    rivalsKilled: 0,
+    rivalsTotal: 5,
+    hasPackage: false,
+    waypoint: null, // { x, z, label }
+    objective: '',
+    beacon: buildBeacon(scene),
   };
 }
 
-// Move the glowing waypoint marker to a place and set the objective text.
-function setWaypoint(G, place, objective) {
-  const m = G.missions;
-  if (m.marker) G.scene.remove(m.marker);
-  const marker = makeMarker(0xffe14d);
-  marker.position.set(place.x, 0, place.z);
-  G.scene.add(marker);
-  m.marker = marker;
-  m.markerPos = { x: place.x, z: place.z };
-  m.objective = objective;
-}
-
-// Start the mission at the given index.
-export function startMission(G, index) {
-  const m = G.missions;
-  m.index = index;
-  m.state = 'active';
+/** (Re)start a mission from its opening stage — used by Start/Continue. */
+export function beginMission(S, index) {
+  const M = S.missions;
+  M.index = index;
+  M.rivalsKilled = 0;
+  M.hasPackage = false;
+  M.timer = 0;
   if (index === 0) {
-    setWaypoint(G, PLACES.garage, 'JOB 1 — FIRST WHEELS: steal any car, then drive it to the garage.');
+    M.stage = 'steal';
+    M.waypoint = null;
   } else if (index === 1) {
-    setWaypoint(G, PLACES.dock, 'JOB 2 — THE PICKUP: walk to the dock and grab the package.');
-    m.timer = 0;
+    M.stage = 'pickup';
+    M.waypoint = { ...S.world.packageSpot, label: 'Pier 9 package' };
+    S.world.packageMesh.visible = true;
   } else if (index === 2) {
-    spawnRivals(G);
-    setWaypoint(G, PLACES.safehouse, 'JOB 3 — HARBOR HEAT: take down all 5 Vipers, then reach the safehouse.');
-    addWanted(G, 3 - G.police.wanted > 0 ? 3 - G.police.wanted : 0);
+    M.stage = 'fight';
+    M.waypoint = { ...S.world.garage, label: 'The garage' };
+    startAmbush(S);
+  } else {
+    M.stage = 'done';
+    M.waypoint = null;
   }
+  updateObjectiveText(S);
 }
 
-// Check mission progress every frame; called from the main loop.
-export function updateMissions(G, dt) {
-  const m = G.missions;
-  const p = G.player;
-  if (m.state !== 'active' || m.complete) return;
-  if (m.marker) {
-    m.marker.userData.gem.rotation.y += dt * 2;
-    m.marker.userData.gem.position.y = 5 + Math.sin(G.time * 3) * 0.5;
+/** The Vipers jump Ray at the garage: five armed rivals, wanted 3. */
+function startAmbush(S) {
+  const spots = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 + 0.4;
+    spots.push({
+      x: S.world.garage.x + Math.cos(angle) * 18,
+      z: S.world.garage.z + Math.sin(angle) * 18,
+    });
   }
-  const dist = m.markerPos ? Math.hypot(p.x - m.markerPos.x, p.z - m.markerPos.z) : 999;
+  S.combat.spawnRivals(S, spots);
+  S.wanted = 3;
+  S.lastCrimeAt = S.time;
+  S.audio.siren(true);
+  S.toast('Ambush! The Vipers are here — fight!');
+  S.audio.blip(300);
+}
 
-  if (m.index === 0) {
-    // Job 1 completes when the player drives any car into the garage zone.
-    if (p.inCar && dist < 10) {
-      p.money += 400;
-      G.audio.fanfare();
-      G.hudFlash = 'Job 1 done! +$400. Mama Sari trusts you now.';
-      startMission(G, 1);
+/** The E key asks missions first: grab the package if close enough. */
+export function tryPickup(S) {
+  const M = S.missions;
+  if (M.stage !== 'pickup') return false;
+  if (!S.player.onFoot) return false;
+  const d = dist2d(S.player.x, S.player.z, S.world.packageSpot.x, S.world.packageSpot.z);
+  if (d > PICKUP_RADIUS) return false;
+  M.hasPackage = true;
+  M.stage = 'return';
+  M.timer = RETURN_SECONDS;
+  M.timerMax = RETURN_SECONDS;
+  M.waypoint = { ...S.world.garage, label: 'The garage' };
+  S.world.packageMesh.visible = false;
+  S.audio.pickup();
+  S.toast('Package grabbed — 90 seconds to the garage!');
+  updateObjectiveText(S);
+  return true;
+}
+
+/** One line of objective text for the HUD, from the current stage. */
+function updateObjectiveText(S) {
+  const M = S.missions;
+  const lines = {
+    steal: 'MISSION 1 — FIRST WHEELS: Steal any car (walk up, press E)',
+    drive: 'MISSION 1 — FIRST WHEELS: Deliver the car to the garage',
+    pickup: 'MISSION 2 — THE PICKUP: Grab the package at Pier 9 (on foot)',
+    return: 'MISSION 2 — THE PICKUP: Get the package to the garage!',
+    fight: 'MISSION 3 — HARBOR HEAT: Take down the Vipers',
+    escape: 'MISSION 3 — HARBOR HEAT: Lose the heat — reach the safehouse',
+    done: 'STORY COMPLETE — Neon Harbor is yours, Ray.',
+  };
+  M.objective = lines[M.stage] || '';
+}
+
+/** Pay out a finished mission and open the next one. */
+function completeMission(S, reward, nextIndex) {
+  const M = S.missions;
+  S.money += reward;
+  S.audio.fanfare();
+  S.toast(`Mission complete! +$${reward}`);
+  S.saveGame();
+  beginMission(S, nextIndex);
+}
+
+/** One frame of the story state machine. */
+export function updateMissions(S, dt) {
+  const M = S.missions;
+  const player = S.player;
+  if (M.stage === 'done') return;
+
+  if (M.stage === 'steal') {
+    if (!player.onFoot) {
+      M.stage = 'drive';
+      M.waypoint = { ...S.world.garage, label: 'The garage' };
+      S.toast('Nice wheels. Now get it to the garage!');
+      updateObjectiveText(S);
     }
-  } else if (m.index === 1) {
-    if (m.timer === 0 && dist < 8 && !p.inCar) {
-      // Package grabbed on foot at the dock: now the clock runs.
-      p.money += 0;
-      m.timer = 90;
-      G.audio.pickup();
-      G.hudFlash = 'Package grabbed! Back to the garage — 90 seconds!';
-      setWaypoint(G, PLACES.garage, 'JOB 2 — THE PICKUP: return the package to the garage before time runs out!');
-    } else if (m.timer > 0) {
-      m.timer -= dt;
-      if (dist < 10) {
-        p.money += 600;
-        G.audio.fanfare();
-        G.hudFlash = 'Job 2 done! +$600. Dax owes you one.';
-        m.timer = 0;
-        startMission(G, 2);
-      } else if (m.timer <= 0) {
-        // Out of time: the package is lost, but the job can be retried.
-        G.hudFlash = 'Too slow — the package deal went cold. Head back to the dock.';
-        m.timer = 0;
-        setWaypoint(G, PLACES.dock, 'JOB 2 — THE PICKUP: walk to the dock and grab the package.');
+  } else if (M.stage === 'drive') {
+    if (dist2d(player.x, player.z, S.world.garage.x, S.world.garage.z) < GARAGE_RADIUS) {
+      completeMission(S, REWARDS[0], 1);
+    }
+  } else if (M.stage === 'pickup') {
+    // Waiting for the player to walk up and press E (see tryPickup).
+    const d = dist2d(player.x, player.z, S.world.packageSpot.x, S.world.packageSpot.z);
+    if (d < 6 && player.onFoot) S.promptText = 'E — Grab the package';
+    else if (d < 18 && !player.onFoot) S.promptText = 'Get out and grab it on foot';
+  } else if (M.stage === 'return') {
+    M.timer -= dt;
+    if (M.timer <= 0) {
+      M.timer = 0;
+      M.hasPackage = false;
+      M.stage = 'pickup';
+      M.waypoint = { ...S.world.packageSpot, label: 'Pier 9 package' };
+      S.world.packageMesh.visible = true;
+      S.toast('Too slow! The package is back at the pier.');
+      S.audio.blip(200);
+      updateObjectiveText(S);
+    } else if (dist2d(player.x, player.z, S.world.garage.x, S.world.garage.z) < GARAGE_RADIUS) {
+      completeMission(S, REWARDS[1], 2);
+    }
+  } else if (M.stage === 'fight') {
+    // The waypoint tracks the nearest living rival.
+    const alive = S.combat.rivals.filter((r) => r.hp > 0);
+    if (alive.length > 0) {
+      let best = alive[0];
+      let bestD = Infinity;
+      for (const r of alive) {
+        const d = dist2d(player.x, player.z, r.x, r.z);
+        if (d < bestD) { bestD = d; best = r; }
       }
+      M.waypoint = { x: best.x, z: best.z, label: 'Viper' };
     }
-  } else if (m.index === 2) {
-    if (m.rivalsLeft <= 0) {
-      // All Vipers down: the safehouse is the finish line.
-      if (dist < 10) {
-        m.state = 'done';
-        m.complete = true;
-        m.objective = 'STORY COMPLETE — Ray is free. Neon Harbor is his.';
-        if (m.marker) { G.scene.remove(m.marker); m.marker = null; }
-        p.money += 1500;
-        G.audio.fanfare();
-        G.gameState = 'complete';
-      } else {
-        m.objective = 'JOB 3 — HARBOR HEAT: all Vipers down! Lose the heat, reach the safehouse.';
-      }
+    if (M.rivalsKilled >= M.rivalsTotal) {
+      M.stage = 'escape';
+      M.waypoint = { ...S.world.safehouse, label: 'Safehouse' };
+      S.toast('They are down! Lose the heat — get to the safehouse!');
+      updateObjectiveText(S);
+    }
+  } else if (M.stage === 'escape') {
+    if (dist2d(player.x, player.z, S.world.safehouse.x, S.world.safehouse.z) < SAFEHOUSE_RADIUS) {
+      M.stage = 'done';
+      M.waypoint = null;
+      S.money += REWARDS[2];
+      S.onStoryComplete();
     }
   }
-}
 
-// Reset the story to job 1 (used by Restart and after BUSTED/WASTED).
-export function resetMissions(G) {
-  clearRivals(G);
-  const m = G.missions;
-  if (m.marker) { G.scene.remove(m.marker); m.marker = null; }
-  m.index = 0;
-  m.state = 'intro';
-  m.timer = 0;
-  m.rivalsLeft = 0;
-  m.complete = false;
-  m.objective = 'Press Start and take your first job.';
-}
-
-// Distance and direction to the current waypoint, for the HUD arrow.
-export function waypointInfo(G) {
-  const m = G.missions;
-  if (!m.markerPos) return null;
-  const dx = m.markerPos.x - G.player.x;
-  const dz = m.markerPos.z - G.player.z;
-  return { dist: Math.hypot(dx, dz), angle: Math.atan2(dx, dz) };
+  // Beacon follows the waypoint, pulsing and spinning.
+  const beacon = M.beacon;
+  if (M.waypoint) {
+    beacon.visible = true;
+    beacon.position.set(M.waypoint.x, 0, M.waypoint.z);
+    const pulse = 1 + Math.sin(S.time * 4) * 0.12;
+    beacon.userData.ring.scale.set(pulse, pulse, 1);
+    beacon.userData.gem.rotation.y += dt * 2;
+    beacon.userData.gem.position.y = 9 + Math.sin(S.time * 2.5) * 0.6;
+  } else {
+    beacon.visible = false;
+  }
 }

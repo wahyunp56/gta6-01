@@ -1,80 +1,119 @@
-// Deterministic screenshot staging for NEON HARBOR.
-// ?shot=title | drive | wanted | done puts the game into a fixed, readable
-// pose for the four screenshots, using the seeded RNG so every run matches.
-// The game itself never reads ?shot= except through this module.
-import { PLACES } from './world.js';
-import { startMission } from './missions.js';
-import { spawnPoliceCar } from './police.js';
-import { spawnRivals } from './combat.js';
+// shots.js — deterministic staging for the four screenshots.
+//
+// ?shot=title | drive | wanted | done rebuilds the same scene every time:
+// the world generator runs on a fixed seed, and each mode places Ray, the
+// cars and the police at exact spots, so the screenshots are reproducible
+// renders of the game's own code — never edited or composited.
 
-export function applyShot(G, shot) {
-  if (!shot) return;
-  const p = G.player;
-  if (shot === 'title') {
-    // Title screen: stay on the menu, camera looking down the main street.
-    G.gameState = 'title';
-    G.camYaw = 0.6;
-    G.camPitch = 0.32;
-    return;
-  }
-  if (shot === 'drive') {
-    // Mid-drive: Ray in a red car on the main street, HUD and minimap live.
-    G.gameState = 'playing';
-    startMission(G, 0);
-    const car = G.parked[0];
-    stealForShot(G, car);
-    p.car.x = 0; p.car.z = 40; p.car.heading = Math.PI;
-    p.car.speed = 18;
-    G.camYaw = Math.PI;
-    G.camPitch = 0.28;
-    G.hudFlash = 'JOB 1 — FIRST WHEELS: steal any car, then drive it to the garage.';
-    return;
-  }
-  if (shot === 'wanted') {
-    // A chase: wanted 3, two police cars closing in, Ray speeding away.
-    G.gameState = 'playing';
-    startMission(G, 2);
-    const car = G.parked[1];
-    stealForShot(G, car);
-    p.car.x = 0; p.car.z = 20; p.car.heading = Math.PI;
-    p.car.speed = 14;
-    G.police.wanted = 3;
-    // Stage the chase visibly: two cruisers ahead in the player's view —
-    // one cutting in head-on, one slower ahead that Ray is about to catch.
-    const cutter = spawnPoliceCar(G);
-    cutter.x = -4; cutter.z = -6; cutter.heading = 0; cutter.speed = 18;
-    const ahead = spawnPoliceCar(G);
-    ahead.x = 5; ahead.z = -16; ahead.heading = Math.PI; ahead.speed = 10;
-    G.police.spawnTimer = 2.5;
-    G.camYaw = Math.PI;
-    G.camPitch = 0.22;
-    G.hudFlash = 'The Vipers are down — lose the heat and reach the safehouse!';
-    return;
-  }
-  if (shot === 'done') {
-    // Story complete: Ray on foot by the safehouse, completion overlay up.
-    G.gameState = 'complete';
-    G.missions.index = 3;
-    G.missions.state = 'done';
-    G.missions.complete = true;
-    G.missions.objective = 'STORY COMPLETE — Ray is free. Neon Harbor is his.';
-    p.money = 2500;
-    p.x = PLACES.safehouse.x; p.z = PLACES.safehouse.z + 8;
-    p.mesh.position.set(p.x, 0, p.z);
-    G.camYaw = 0.2;
-    G.camPitch = 0.3;
-    return;
-  }
+export const SHOT_SEED = 20261117;
+
+const DRIVE_SPOT = { x: 0, z: -45, heading: 0 }; // heading north up 0th avenue
+const WANTED_SPOT = { x: 45, z: 45, heading: Math.PI / 2 };
+
+/** Put Ray in a parked car and roll it down the avenue at a good clip. */
+function stageDrive(S) {
+  const car = S.world.parkedCars[0];
+  car.mesh.position.set(DRIVE_SPOT.x, 0, DRIVE_SPOT.z);
+  car.x = DRIVE_SPOT.x;
+  car.z = DRIVE_SPOT.z;
+  car.heading = DRIVE_SPOT.heading;
+  car.mesh.rotation.y = DRIVE_SPOT.heading;
+  S.player.x = DRIVE_SPOT.x;
+  S.player.z = DRIVE_SPOT.z;
+  S.player.heading = DRIVE_SPOT.heading;
+  S.player.camYaw = Math.PI; // camera behind the car, looking north
+  S.player.camPitch = 0.3;
+  // Enter the car without the steal penalty: this is a staged photo.
+  car.taken = true;
+  S.player.car = car;
+  S.player.onFoot = false;
+  S.player.carHp = 100;
+  S.player.speed = 15;
+  S.player.steer = 0;
+  S.player.mesh.visible = false;
+  S.missions.index = 0;
+  S.missions.stage = 'drive';
+  S.missions.waypoint = { ...S.world.garage, label: 'The garage' };
+  S.missions.objective = 'MISSION 1 — FIRST WHEELS: Deliver the car to the garage';
+  S.mode = 'playing';
+  S.audio.engineNote(true);
 }
 
-// Steal a parked car without the wanted bump, so the staged shot is clean.
-function stealForShot(G, car) {
-  const p = G.player;
-  if (!car) return;
-  G.parked = G.parked.filter((c) => c !== car);
-  G.traffic = G.traffic.filter((c) => c !== car);
-  p.car = car;
-  p.inCar = true;
-  car.parked = false;
-  p.x = car.x; p.z = car.z;
+/** Wanted 3: two police cars closing in, stars lit, sirens implied. */
+function stageWanted(S) {
+  stageDrive(S);
+  S.player.x = WANTED_SPOT.x;
+  S.player.z = WANTED_SPOT.z;
+  S.player.heading = WANTED_SPOT.heading;
+  S.player.car.x = WANTED_SPOT.x;
+  S.player.car.z = WANTED_SPOT.z;
+  S.player.car.heading = WANTED_SPOT.heading;
+  S.player.car.mesh.position.set(WANTED_SPOT.x, 0, WANTED_SPOT.z);
+  S.player.car.mesh.rotation.y = WANTED_SPOT.heading;
+  S.player.speed = 12;
+  S.wanted = 3;
+  S.lastCrimeAt = S.time;
+  S.missions.stage = 'escape';
+  S.missions.waypoint = { ...S.world.safehouse, label: 'Safehouse' };
+  S.missions.objective = 'MISSION 3 — HARBOR HEAT: Lose the heat — reach the safehouse';
+  // Two cruisers ahead of Ray, headlights on, closing in — the chase is
+  // in frame, not somewhere behind the camera.
+  const spots = [
+    { x: WANTED_SPOT.x + 20, z: WANTED_SPOT.z - 5 },
+    { x: WANTED_SPOT.x + 27, z: WANTED_SPOT.z + 6 },
+  ];
+  for (const spot of spots) {
+    S.police.spawnPoliceCarAt(spot.x, spot.z);
+  }
+  S.audio.siren(true);
+}
+
+/** Story complete: Ray at the safehouse, money counted, job done. */
+function stageDone(S) {
+  S.money = 2920;
+  S.missions.index = 3;
+  S.missions.stage = 'done';
+  S.missions.waypoint = null;
+  S.missions.objective = 'STORY COMPLETE — Neon Harbor is yours, Ray.';
+  S.wanted = 0;
+  S.health = 100;
+  S.player.x = S.world.safehouse.x - 18;
+  S.player.z = S.world.safehouse.z;
+  S.player.heading = Math.PI / 2;
+  S.player.camYaw = Math.PI / 2 + Math.PI;
+  S.player.camPitch = 0.28;
+  S.mode = 'done';
+  S.best = Math.max(S.best || 0, S.money);
+}
+
+/**
+ * Apply a ?shot= mode after the world is built. Returns true when a shot
+ * mode was staged (the caller then skips the title screen).
+ */
+export function applyShotMode(S, kind) {
+  if (!kind) return false;
+  if (kind === 'title') {
+    S.mode = 'title';
+    // Slow cinematic orbit: the camera drifts around the park on its own.
+    S.shotOrbit = true;
+    S.player.x = 0;
+    S.player.z = -60;
+    S.player.camYaw = 0.6;
+    S.player.camPitch = 0.42;
+    S.player.camDist = 26;
+    return true;
+  }
+  if (kind === 'drive') {
+    stageDrive(S);
+    return true;
+  }
+  if (kind === 'wanted') {
+    stageWanted(S);
+    return true;
+  }
+  if (kind === 'done') {
+    stageDone(S);
+    return true;
+  }
+  return false;
 }

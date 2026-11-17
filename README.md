@@ -1,60 +1,115 @@
-# NEON HARBOR — an open-world crime game
+# NEON HARBOR
 
-A 3D open-world crime game built with three.js, served as plain static files
-in `game/` — no build step, no network requests, no assets beyond the vendored
-three.js. Everything (city, cars, characters, sounds) is generated in code.
+[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/c/gta6-01)
+[![rank](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/rank.svg)](https://make.fun/c/gta6-01)
+[![reward](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/reward.svg)](https://make.fun/c/gta6-01)
+
+**NEON HARBOR** is an original open-world crime game for make.fun's
+**gta6-01 "Make GTA 6"** competition ($1,666). It runs entirely from static
+files — no build step, no network — in a desktop browser, built on vendored
+three.js.
 
 ## The story
 
-Ray has nothing but a borrowed jacket and a debt to Mama Sari, who runs the
-garage in Neon Harbor. One night of work can clear it — if the cops stay off
-his back. The Vipers, a rival crew, run the streets and want Ray gone.
+Ray owes **Mama Sari** big, and the Harbor PD does not do payment plans.
+Three jobs stand between him and a clean slate:
 
-## How to play
+1. **First Wheels** — steal any car and deliver it to the garage (+$500).
+2. **The Pickup** — grab the package at Pier 9 on foot and get it back to
+   the garage within 90 seconds (+$800).
+3. **Harbor Heat** — the **Vipers** ambush the garage. Take down all five,
+   then lose the heat and reach the safehouse while wanted 3 (+$1,500).
 
-Open `game/index.html` from any static server (for example `node serve.ts`,
-then http://localhost:8080) in a desktop browser.
+Finish all three and the story completes with your final money as the score.
 
-- **Move:** WASD on foot (Shift to run), mouse drag to orbit the camera.
-- **Steal a car:** walk up to any parked or traffic car and press **E**.
-  Stealing a moving car makes its driver bail out. Driving: **W/S** gas and
-  brake/reverse, **A/D** steer, **Space** handbrake. Press **E** again to get out.
-- **Shoot:** click or press **F** (on foot). Ammo is shown in the HUD.
-- **Pause:** Esc or P. **M** mutes the synthesized sound.
+## How to win — and how to lose
 
-## Win and lose
+- **Win:** complete missions 1–3 in order and reach the safehouse. The
+  waypoint beacon, the HUD objective line, the arrow and the minimap blip
+  always point at the next goal.
+- **Lose:** get **BUSTED** (a foot cop touches Ray while he is on foot) or
+  **WASTED** (health hits zero). Either way Ray loses half his money and
+  wakes up at the safehouse — the story continues from the current mission.
 
-**Win:** finish all three jobs in order —
+## The city
 
-1. **First Wheels** — steal any car and drive it to the garage.
-2. **The Pickup** — walk to the harbor dock, grab the package, and bring it
-   back to the garage within 90 seconds.
-3. **Harbor Heat** — take down all 5 Vipers, then reach the safehouse while
-   the heat is on.
+A dusk-lit harbor city on a 9×9 street grid: lit-window towers, a park, a
+pier with crates and a lighthouse, the garage and the safehouse. Traffic
+cars run block loops, pedestrians walk the sidewalks, and police respond to
+your wanted level (0–5 stars).
 
-Finishing job 3 shows the Story Complete screen with your final cash.
+**Wanted goes up** when you steal a car (+1), hit a pedestrian (+1), shoot
+(+1), or ram a police car (+2). It fades slowly when you stay quiet and far
+from officers. At wanted 3+, more and faster cruisers join the chase.
 
-**Lose:** get caught by a cop on foot and you are **BUSTED** (respawn at the
-start, lose half your cash). Lose all your health and you are **WASTED**
-(same penalty). Progress and cash save to localStorage, so Continue picks up
-where you left off.
+## Controls
 
-## Wanted level
+| Input | Action |
+| --- | --- |
+| W A S D | Walk / drive (W gas, S brake/reverse, A/D steer) |
+| Mouse drag | Orbit the camera (it eases behind the car while driving) |
+| Click / F | Shoot the pistol (hitscan, muzzle flash, tracer) |
+| E | Steal a car / get out / grab the package |
+| Shift | Run on foot |
+| Space | Handbrake |
+| R | Reload |
+| Esc / P | Pause |
+| M | Mute |
 
-Stars rise when you steal a car (+1), hit a pedestrian (+1), shoot (+1), or
-ram a police car (+2). Police cars chase and ram you; foot cops chase you on
-foot. At 3+ stars there are more of them and they are faster. Stay clean and
-far from the cops and the heat slowly cools off.
+## HUD
 
-## What is in the game
+Health bar, money, wanted stars, speed, ammo, mission timer, objective
+text, a waypoint arrow with distance, and a live top-down minimap (roads,
+buildings, cars, police, rivals, waypoint, and you).
 
-- A sunset city grid: lit-window buildings, neon rooftop signs, street lamps,
-  Harbor Park with a pond, the harbor dock with crates and a lighthouse.
-- Traffic cars driving the streets, pedestrians on the sidewalks, parked cars
-  to steal, police cars and foot cops.
-- HUD with health, cash, wanted stars, speed, ammo, mission timer, objective
-  text, and a live top-down minimap with a waypoint arrow.
-- Synthesized WebAudio only: engine hum that follows speed, gunshots, pickup
-  blips, a two-tone siren while wanted, and a mission-complete arpeggio.
-- Deterministic screenshot staging: `?shot=title|drive|wanted|done` poses the
-  game for its four screenshots with a seeded RNG.
+## Sound
+
+All synthesized with WebAudio — no audio files: an engine hum that follows
+your speed, gunshots, pickup chimes, a two-tone siren while wanted, and a
+mission-complete arpeggio. **M** mutes.
+
+## Save
+
+Progress (money, current mission, best take) saves to `localStorage`
+automatically. The title screen offers **Continue** when a save exists.
+
+## Play it
+
+```sh
+node serve.ts
+# open http://localhost:8080 in desktop Chrome
+```
+
+## Hand it in
+
+```sh
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+node ~/workspace/makefun/gta6-01-kit/cli/makefun.mjs check --kit ~/workspace/makefun/gta6-01-kit --repo .
+```
+
+## Layout
+
+- `game/index.html` — page, HUD, menus
+- `game/src/main.js` — boot, loop, state, input, save
+- `game/src/world.js` — city, roads, traffic, pedestrians
+- `game/src/player.js` — on foot, driving, camera
+- `game/src/police.js` — wanted level + police AI
+- `game/src/missions.js` — story + objectives
+- `game/src/combat.js` — shooting + rivals
+- `game/src/render.js` — HUD + minimap
+- `game/src/audio.js` — WebAudio synth
+- `game/src/random.js` — seeded RNG
+- `game/src/shots.js` — deterministic `?shot=` staging
+- `game/three.module.min.js`, `game/three.core.min.js` — vendored three.js
+- `main.ts` — the make.fun entrypoint (copies game/ + screenshots/, writes dossier.json)
+- `screenshots/` — four real renders of the game (see `shots.json`)
+
+## Originality
+
+Everything here — the city, the names (Ray, Mama Sari, the Vipers), the
+story, the art and the sounds — is invented for this game. Nothing is taken
+from any commercial game.
+
+## License
+
+MIT — see `LICENSE`.

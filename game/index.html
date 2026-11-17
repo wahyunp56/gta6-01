@@ -1,71 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>NEON HARBOR — an open-world crime game</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="data:," />
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #14141f;
-    font-family: 'Segoe UI', Arial, sans-serif; color: #fff; }
-  #game { position: fixed; inset: 0; }
-  #game canvas { display: block; }
-  /* --- HUD --- */
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-  #top-right { position: absolute; top: 14px; right: 16px; text-align: right; }
-  #money { font-size: 30px; font-weight: 800; color: #7dff8a;
-    text-shadow: 2px 2px 0 #000; }
-  #stars { font-size: 26px; letter-spacing: 4px; color: #ffd700;
-    text-shadow: 2px 2px 0 #000; }
-  #speed { font-size: 18px; font-weight: 700; text-shadow: 2px 2px 0 #000; }
-  #health-wrap { position: absolute; top: 14px; left: 16px; width: 220px; }
-  #health-bar { height: 16px; background: rgba(0,0,0,.6); border: 2px solid #fff;
-    border-radius: 8px; overflow: hidden; }
-  #health-fill { height: 100%; width: 100%; background: #39d353; }
-  #health-text { font-size: 13px; font-weight: 700; text-shadow: 1px 1px 0 #000; }
-  #ammo { font-size: 15px; font-weight: 700; margin-top: 4px;
-    text-shadow: 1px 1px 0 #000; }
-  #objective { position: absolute; left: 16px; bottom: 190px; max-width: 420px;
-    font-size: 16px; font-weight: 700; background: rgba(0,0,0,.55);
-    padding: 8px 12px; border-left: 4px solid #ffe14d; border-radius: 4px; }
-  #timer { position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
-    font-size: 26px; font-weight: 800; color: #ff6a6a; display: none;
-    text-shadow: 2px 2px 0 #000; }
-  #flash { position: absolute; left: 50%; top: 64px; transform: translateX(-50%);
-    font-size: 18px; font-weight: 700; color: #ffe14d; opacity: 0;
-    text-shadow: 2px 2px 0 #000; transition: opacity .4s; white-space: nowrap; }
-  #minimap { position: absolute; left: 16px; bottom: 16px; width: 160px; height: 160px;
-    border: 3px solid rgba(255,255,255,.7); border-radius: 8px;
-    background: #14141f; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
-    margin: -11px 0 0 -11px; display: none; }
-  #crosshair::before, #crosshair::after { content: ''; position: absolute;
-    background: #fff; box-shadow: 0 0 3px #000; }
-  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
-  #crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
-  #help { position: absolute; right: 16px; bottom: 16px; font-size: 12px;
-    text-align: right; opacity: .8; text-shadow: 1px 1px 0 #000; line-height: 1.5; }
-  /* --- Screens --- */
-  .screen { position: fixed; inset: 0; z-index: 10; display: flex;
-    flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; background: rgba(10, 8, 24, .82); padding: 20px; }
-  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 6px;
-    background: linear-gradient(90deg, #ff4fd8, #39d5ff, #ffe14d);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-    text-shadow: 0 0 30px rgba(255,79,216,.35); }
-  .screen h2 { font-size: 40px; margin: 0; letter-spacing: 4px; color: #ff4444;
-    text-shadow: 3px 3px 0 #000; }
-  .screen p { max-width: 560px; font-size: 17px; line-height: 1.6; color: #e8e8f0; }
-  .screen .controls { font-size: 14px; color: #b8b8cc; line-height: 1.9; }
-  .screen button { pointer-events: auto; font-size: 20px; font-weight: 800;
-    padding: 14px 42px; margin: 8px; border: none; border-radius: 8px;
-    cursor: pointer; background: #ff4fd8; color: #fff;
-    box-shadow: 0 4px 0 #a02080; }
-  .screen button:hover { filter: brightness(1.15); }
-  .screen button.secondary { background: #39d5ff; box-shadow: 0 4px 0 #1a6a80; }
-  #pause-screen, #busted-screen, #complete-screen { display: none; }
-  #continue-btn { display: none; }
-  .big-money { font-size: 34px; font-weight: 800; color: #7dff8a; }
+  :root {
+    --ink: #f4efe8;
+    --dim: #b9b3c9;
+    --pink: #ff4d8d;
+    --cyan: #37d6e0;
+    --gold: #ffd23e;
+    --panel: rgba(16, 12, 28, 0.82);
+    --line: rgba(244, 239, 232, 0.22);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #14101f; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); }
+  #game, #game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  [hidden] { display: none !important; }
+
+  /* ---------- HUD ---------- */
+  .hud { position: fixed; z-index: 7; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+  #top-left { top: 14px; left: 16px; }
+  #health-bar { width: 210px; height: 14px; border: 1px solid var(--line); background: rgba(0,0,0,0.55); border-radius: 7px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #37d67a; transition: width 0.2s; }
+  #health-row { display: flex; gap: 8px; align-items: baseline; margin-top: 4px; font-size: 13px; color: var(--dim); }
+  #money { font-size: 26px; font-weight: 800; color: var(--gold); margin-top: 6px; letter-spacing: 0.5px; }
+  #top-right { top: 14px; right: 16px; text-align: right; }
+  #stars { font-size: 30px; letter-spacing: 4px; color: var(--gold); }
+  #arrow-wrap { margin-top: 2px; font-size: 13px; color: var(--dim); }
+  #arrow { display: inline-block; font-size: 20px; color: #a8ff5e; transition: transform 0.1s linear; }
+  #objective-box { left: 16px; bottom: 16px; max-width: 520px; }
+  #objective { font-size: 15px; font-weight: 600; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+  #timer { font-size: 22px; font-weight: 800; color: var(--gold); margin-top: 6px; }
+  #bottom-right { right: 16px; bottom: 16px; text-align: right; }
+  #minimap { width: 170px; height: 170px; border: 2px solid var(--line); border-radius: 8px; background: #101018; }
+  #speed { font-size: 24px; font-weight: 800; margin-top: 4px; }
+  #ammo { font-size: 14px; color: var(--dim); }
+  #prompt { left: 50%; bottom: 110px; transform: translateX(-50%); font-size: 15px; font-weight: 700; background: var(--panel); border: 1px solid var(--line); padding: 6px 12px; border-radius: 20px; transition: opacity 0.2s; }
+  #toast { left: 50%; top: 76px; transform: translateX(-50%); font-size: 16px; font-weight: 700; color: var(--gold); background: var(--panel); border: 1px solid var(--line); padding: 8px 16px; border-radius: 20px; transition: opacity 0.4s; white-space: nowrap; }
+  #crosshair { left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.9); box-shadow: 0 0 4px rgba(0,0,0,0.9); }
+  #damage { position: fixed; inset: 0; z-index: 6; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(220, 40, 30, 0.55) 100%); }
+
+  /* ---------- Full-screen overlays ---------- */
+  .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, rgba(20,10,40,0.88), rgba(40,10,50,0.82)); backdrop-filter: blur(2px); }
+  .card { max-width: 640px; width: 92%; text-align: center; padding: 34px 30px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+  .card h1 { font-size: 52px; letter-spacing: 3px; line-height: 1;
+    background: linear-gradient(90deg, var(--pink), var(--gold), var(--cyan));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card h2 { font-size: 40px; letter-spacing: 2px; }
+  .card h2.pink { color: var(--pink); }
+  .card h2.red { color: #ff5b4d; }
+  .card h2.gold { color: var(--gold); }
+  .tagline { color: var(--dim); font-size: 15px; margin-top: 10px; line-height: 1.5; }
+  .story { margin: 16px 0 6px; font-size: 15px; line-height: 1.55; color: var(--ink); }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; text-align: left;
+    font-size: 13.5px; color: var(--dim); margin: 18px auto 6px; max-width: 480px; }
+  .controls b { color: var(--ink); }
+  .btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: 17px; font-weight: 800;
+    letter-spacing: 1px; color: #14101f; background: var(--gold); border: 0; border-radius: 10px;
+    padding: 12px 26px; margin: 8px 4px 0; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .big-money { font-size: 44px; font-weight: 800; color: var(--gold); margin: 10px 0 4px; }
+  .fine { font-size: 12px; color: var(--dim); margin-top: 14px; line-height: 1.5; }
 </style>
 <script type="importmap">
   { "imports": { "three": "./three.module.min.js" } }
@@ -73,59 +77,98 @@
 </head>
 <body>
 <div id="game"></div>
+<div id="damage"></div>
 
+<!-- HUD -->
 <div id="hud">
-  <div id="health-wrap">
+  <div class="hud" id="top-left">
     <div id="health-bar"><div id="health-fill"></div></div>
-    <div id="health-text">100</div>
-    <div id="ammo">Ammo 48 / ∞</div>
+    <div id="health-row"><span>HEALTH</span><span id="health-num">100</span></div>
+    <div id="money">$120</div>
   </div>
-  <div id="top-right">
-    <div id="money">$0</div>
+  <div class="hud" id="top-right">
     <div id="stars">☆☆☆☆☆</div>
-    <div id="speed">On foot</div>
+    <div id="arrow-wrap"><span id="arrow">▲</span> <span id="arrow-dist"></span></div>
   </div>
-  <div id="timer"></div>
-  <div id="flash"></div>
-  <div id="objective">Press Start and take your first job.</div>
-  <canvas id="minimap" width="160" height="160"></canvas>
-  <div id="crosshair"></div>
-  <div id="help">WASD move/drive · Mouse drag camera · Click/F shoot<br>
-  E steal car / get out · Shift run · Space handbrake<br>Esc pause · M mute</div>
+  <div class="hud" id="objective-box">
+    <div id="objective">Welcome to Neon Harbor.</div>
+    <div id="timer"></div>
+  </div>
+  <div class="hud" id="bottom-right">
+    <canvas id="minimap" width="170" height="170"></canvas>
+    <div id="speed">—</div>
+    <div id="ammo">12 / ∞</div>
+  </div>
+  <div class="hud" id="prompt"></div>
+  <div class="hud" id="toast" style="opacity:0"></div>
+  <div class="hud" id="crosshair"></div>
 </div>
 
-<div id="title-screen" class="screen">
-  <h1>NEON HARBOR</h1>
-  <p id="story-text">Ray has nothing but a borrowed jacket and a debt to Mama Sari. One night of work in Neon Harbor can clear it — if the cops stay off his back.</p>
-  <p class="controls">WASD move &amp; drive · Mouse drag to look · Click / F shoot · E steal a car<br>
-  Shift run · Space handbrake · Esc pause · M mute<br>
-  Finish all 3 jobs for Mama Sari: steal a car, run the dock pickup, beat the Vipers.</p>
-  <div>
-    <button id="start-btn">▶ START</button>
-    <button id="continue-btn" class="secondary">Continue</button>
+<!-- Title screen -->
+<div class="screen" id="screen-title">
+  <div class="card">
+    <h1>NEON HARBOR</h1>
+    <p class="tagline">An open-world crime story — drive it, steal it, survive it.</p>
+    <p class="story">Ray owes <b>Mama Sari</b> big, and the Harbor PD does not do payment
+      plans. Three jobs stand between him and a clean slate: boost a car, run a
+      package past the pier, and walk out of a Viper ambush alive.</p>
+    <div class="controls">
+      <div><b>W A S D</b> — walk / drive</div><div><b>Mouse drag</b> — look around</div>
+      <div><b>Click / F</b> — shoot</div><div><b>E</b> — steal car / get out / grab</div>
+      <div><b>Shift</b> — run</div><div><b>Space</b> — handbrake</div>
+      <div><b>R</b> — reload</div><div><b>Esc / P</b> — pause &nbsp; <b>M</b> — mute</div>
+    </div>
+    <button class="btn" id="btn-start">▶ &nbsp;START</button>
+    <button class="btn ghost" id="btn-continue">Continue</button>
+    <p class="fine" id="title-save-note"></p>
+    <p class="fine">Win: finish all three missions and reach the safehouse.
+      Lose: get busted or wasted — you keep half your money and start over on foot.
+      An original game — its city, characters and story are invented here.</p>
   </div>
 </div>
 
-<div id="pause-screen" class="screen">
-  <h1>PAUSED</h1>
-  <p>Neon Harbor waits for no one — except right now.</p>
-  <div>
-    <button id="resume-btn">Resume</button>
-    <button id="restart-btn" class="secondary">Restart from start</button>
+<!-- Pause -->
+<div class="screen" id="screen-pause" hidden>
+  <div class="card">
+    <h2>PAUSED</h2>
+    <p class="tagline">Neon Harbor waits. The Vipers do not.</p>
+    <button class="btn" id="btn-resume">Resume</button>
+    <button class="btn ghost" id="btn-restart">Restart story</button>
+    <button class="btn ghost" id="btn-quit">Save &amp; title</button>
   </div>
 </div>
 
-<div id="busted-screen" class="screen">
-  <h2 id="busted-title">BUSTED!</h2>
-  <p id="busted-text">The Harbor PD caught you.</p>
-  <div><button id="busted-btn">Get back out there</button></div>
+<!-- Busted -->
+<div class="screen" id="screen-busted" hidden>
+  <div class="card">
+    <h2 class="pink">BUSTED</h2>
+    <p class="story">The Harbor PD caught up with you. Half your money goes to bail.</p>
+    <p class="big-money" id="busted-money">$0 left</p>
+    <button class="btn" id="btn-busted-ok">Walk out — back to the safehouse</button>
+  </div>
 </div>
 
-<div id="complete-screen" class="screen">
-  <h1>STORY COMPLETE</h1>
-  <p>All three jobs done. The Vipers are finished, the heat is off, and Neon Harbor is Ray's. Mama Sari's debt is paid — with interest.</p>
-  <p class="big-money">Final cash: <span id="complete-money">$2,500</span></p>
-  <div><button id="again-btn">Play again</button></div>
+<!-- Wasted -->
+<div class="screen" id="screen-wasted" hidden>
+  <div class="card">
+    <h2 class="red">WASTED</h2>
+    <p class="story">Ray went down. The harbor keeps his money — half of it, anyway.</p>
+    <p class="big-money" id="wasted-money">$0 left</p>
+    <button class="btn" id="btn-wasted-ok">Get up — back to the safehouse</button>
+  </div>
+</div>
+
+<!-- Story complete -->
+<div class="screen" id="screen-done" hidden>
+  <div class="card">
+    <h2 class="gold">STORY COMPLETE</h2>
+    <p class="story">Three jobs, one clean slate. Mama Sari is paid, the Vipers are
+      finished, and Neon Harbor is yours, Ray.</p>
+    <p class="big-money" id="done-money">$0</p>
+    <p class="tagline" id="done-detail"></p>
+    <button class="btn" id="btn-again">↻ &nbsp;Play again</button>
+    <button class="btn ghost" id="btn-done-title">Title screen</button>
+  </div>
 </div>
 
 <script type="module" src="./src/main.js"></script>

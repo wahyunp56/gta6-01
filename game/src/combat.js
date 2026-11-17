@@ -1,175 +1,245 @@
-// Combat for NEON HARBOR: hitscan pistol with a tracer line, a muzzle flash,
-// ammo, and rival shooters for mission 3. Shots are resolved instantly along
-// the camera ray so aiming always feels responsive.
+// combat.js — Ray's pistol, the Vipers who shoot back, and the tracers
+// and muzzle flashes that make a gunfight read on screen.
+//
+// Shooting is hitscan: a ray from the camera through the crosshair finds
+// the first thing it hits — a rival, a pedestrian, a police car, or a wall.
+// Every shot is a crime (wanted +1) and costs one round; R reloads.
+
 import * as THREE from 'three';
-import { makePedMesh } from './world.js';
-import { addWanted } from './police.js';
+import { clamp, dist2d } from './random.js';
 
-// A tracer is a short-lived line from the gun to the hit point.
-function makeTracer(scene, from, to) {
-  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe14d }));
-  scene.add(line);
-  return { line, life: 0.09 };
-}
+const PISTOL_DAMAGE = 34;
+const RIVAL_HP = 100;
+const MAG_SIZE = 12;
+const SHOT_COOLDOWN = 0.28;
+const RIVAL_SHOT_COOLDOWN = 1.6;
 
-export function createCombat(G) {
+export function createCombat(scene) {
+  // One reusable raycaster + one reusable muzzle light for the whole game.
+  const muzzle = new THREE.PointLight(0xffc860, 0, 14);
+  muzzle.position.set(0, -10, 0);
+  scene.add(muzzle);
   return {
-    tracers: [],
-    flash: null,
+    scene,
+    raycaster: new THREE.Raycaster(),
+    tracers: [], // { line, life }
+    rivals: [], // { mesh, x, z, heading, hp, shootTimer, walkPhase }
+    muzzle,
+    muzzleTimer: 0,
     cooldown: 0,
-    rivals: [], // mission 3 shooters
+    ammo: MAG_SIZE,
   };
 }
 
-// Fire the pistol: one hitscan ray from the camera through the crosshair.
-export function fireWeapon(G) {
-  const p = G.player;
-  const c = G.combat;
-  if (c.cooldown > 0 || p.ammo <= 0 || p.health <= 0) return;
-  if (p.inCar) return; // no drive-by: get out to shoot
-  c.cooldown = 0.28;
-  p.ammo -= 1;
-  G.audio.shot();
-  addWanted(G, 1);
-  const dir = new THREE.Vector3();
-  G.camera.getWorldDirection(dir);
-  const from = G.camera.position.clone();
-  const ray = new THREE.Raycaster(from, dir);
-  ray.far = 90;
-  // Test rivals first, then pedestrians, then the world for a wall hit.
-  const targets = [];
-  for (const r of c.rivals) targets.push(r.mesh);
-  for (const ped of G.peds) targets.push(ped.mesh);
-  const hits = ray.intersectObjects(targets, true);
-  let end = from.clone().add(dir.clone().multiplyScalar(90));
-  if (hits.length > 0) {
-    end = hits[0].point.clone();
-    const hitObj = hits[0].object;
-    // Walk up to the group root to find which figure was hit.
-    let root = hitObj;
-    while (root.parent && root.parent !== G.scene) root = root.parent;
-    const rival = c.rivals.find((r) => r.mesh === root);
-    if (rival) {
-      rival.health -= 34;
-      rival.flash = 0.12;
-      if (rival.health <= 0) killRival(G, rival);
-    } else {
-      const ped = G.peds.find((q) => q.mesh === root);
-      if (ped) knockPed(G, ped);
-    }
-  } else {
-    // No figure hit: clip the tracer at the first building in the way.
-    const wallHits = ray.intersectObjects(G.cityMeshes, false);
-    if (wallHits.length > 0) end = wallHits[0].point.clone();
+/** Build one Viper: dark jacket, red bandana, pistol in hand. */
+function buildRivalMesh() {
+  const group = new THREE.Group();
+  const jacket = new THREE.MeshStandardMaterial({ color: 0x3a2a2a, roughness: 0.8 });
+  const pants = new THREE.MeshStandardMaterial({ color: 0x1e1e26, roughness: 0.85 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc8906a, roughness: 0.7 });
+  const bandana = new THREE.MeshStandardMaterial({ color: 0xc23b4e, roughness: 0.7 });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.72, 0.32), jacket);
+  torso.position.y = 1.08;
+  torso.castShadow = true;
+  group.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), skin);
+  head.position.y = 1.62;
+  head.castShadow = true;
+  group.add(head);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 12), bandana);
+  band.position.y = 1.74;
+  group.add(band);
+  for (const x of [-0.15, 0.15]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.24), pants);
+    leg.position.set(x, 0.34, 0);
+    group.add(leg);
   }
-  c.tracers.push(makeTracer(G.scene, from.clone().add(dir.clone().multiplyScalar(1.2)), end));
-  // Muzzle flash: a bright sphere at the camera that fades in a blink.
-  if (!c.flash) {
-    c.flash = new THREE.Mesh(
-      new THREE.SphereGeometry(0.35, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffe14d }),
-    );
-    G.scene.add(c.flash);
-  }
-  c.flash.position.copy(from).add(dir.clone().multiplyScalar(1.4));
-  c.flash.visible = true;
-  c.flashLife = 0.06;
+  // The pistol: a small dark box held out in front.
+  const gun = new THREE.Mesh(
+    new THREE.BoxGeometry(0.09, 0.14, 0.34),
+    new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.4, metalness: 0.6 }),
+  );
+  gun.position.set(0.3, 1.15, 0.35);
+  group.add(gun);
+  return group;
 }
 
-function killRival(G, rival) {
-  G.scene.remove(rival.mesh);
-  G.combat.rivals = G.combat.rivals.filter((r) => r !== rival);
-  G.player.money += 150;
-  G.audio.pickup();
-  G.missions.rivalsLeft -= 1;
-  G.hudFlash = 'Rival down! ' + G.missions.rivalsLeft + ' left';
-}
-
-function knockPed(G, ped) {
-  // Hitting a pedestrian is a crime: wanted rises and the ped runs away.
-  addWanted(G, 1);
-  ped.heading += Math.PI;
-  ped.speed = 9;
-  G.hudFlash = 'You hit a pedestrian! Wanted +1';
-}
-
-// Spawn the five rivals around the safehouse for mission 3.
-export function spawnRivals(G) {
-  const spots = [
-    { x: -52, z: -78 }, { x: -78, z: -92 }, { x: -30, z: -96 },
-    { x: -66, z: -70 }, { x: -40, z: -72 },
-  ];
-  for (const s of spots) {
-    const mesh = makePedMesh(0xc22a3a);
-    mesh.position.set(s.x, 0, s.z);
-    G.scene.add(mesh);
-    G.combat.rivals.push({
-      mesh, x: s.x, z: s.z, heading: 0, health: 100,
-      shootTimer: 1 + G.rng() * 2, flash: 0,
+/** Spawn the ambush squad at the given ground points. */
+export function spawnRivals(S, spots) {
+  const combat = S.combat;
+  for (const spot of spots) {
+    const mesh = buildRivalMesh();
+    mesh.position.set(spot.x, 0, spot.z);
+    S.scene.add(mesh);
+    combat.rivals.push({
+      mesh, x: spot.x, z: spot.z,
+      heading: Math.atan2(S.player.x - spot.x, S.player.z - spot.z),
+      hp: RIVAL_HP,
+      shootTimer: 0.8 + Math.random() * 1.2,
+      walkPhase: Math.random() * 6,
     });
   }
-  G.missions.rivalsLeft = 5;
+  S.toast(`Vipers incoming — ${spots.length} hostiles!`);
 }
 
-// Rivals strafe toward the player and shoot back, hurting the player.
-export function updateRivals(G, dt) {
-  const p = G.player;
-  for (const r of G.combat.rivals) {
-    const dx = p.x - r.x, dz = p.z - r.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    r.heading = Math.atan2(dx, dz);
-    if (dist > 14) {
-      r.x += Math.sin(r.heading) * 4.5 * dt;
-      r.z += Math.cos(r.heading) * 4.5 * dt;
-    } else if (dist < 7) {
-      r.x -= Math.sin(r.heading) * 2.5 * dt;
-      r.z -= Math.cos(r.heading) * 2.5 * dt;
-    }
-    r.mesh.position.set(r.x, 0, r.z);
-    r.mesh.rotation.y = r.heading;
-    r.shootTimer -= dt;
-    if (r.shootTimer <= 0 && dist < 42 && p.health > 0) {
-      r.shootTimer = 1.4 + G.rng() * 1.2;
-      // Rival shot: a tracer back at the player, with a chance to hit.
-      const from = new THREE.Vector3(r.x, 1.4, r.z);
-      const to = new THREE.Vector3(p.x, 1.2, p.z);
-      G.combat.tracers.push(makeTracer(G.scene, from, to));
-      G.audio.blip(140, 0.1, 'square', 0.12);
-      if (G.rng() < 0.45) {
-        p.health = Math.max(0, p.health - 8);
-        p.lastDamageAt = G.time;
-        G.hudFlash = 'You got shot! Health ' + Math.round(p.health);
+/** Remove every rival (restart, story done). */
+export function clearRivals(S) {
+  for (const rival of S.combat.rivals) S.scene.remove(rival.mesh);
+  S.combat.rivals.length = 0;
+}
+
+/** A short-lived glowing line from muzzle to impact point. */
+function addTracer(S, from, to, color) {
+  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const line = new THREE.Line(
+    geo,
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }),
+  );
+  S.scene.add(line);
+  S.combat.tracers.push({ line, life: 0.09 });
+}
+
+/** Ray's shot: raycast from the camera, damage what it hits. */
+export function tryShoot(S) {
+  const combat = S.combat;
+  if (S.mode !== 'playing') return;
+  if (combat.cooldown > 0) return;
+  if (combat.ammo <= 0) {
+    S.toast('Out of ammo — press R to reload');
+    S.audio.click();
+    combat.cooldown = 0.35;
+    return;
+  }
+  combat.cooldown = SHOT_COOLDOWN;
+  combat.ammo -= 1;
+  S.addWanted(1);
+
+  // Muzzle position: just in front of the camera, low and right.
+  const cam = S.camera;
+  const muzzlePos = cam.position.clone();
+  const fwd = new THREE.Vector3();
+  cam.getWorldDirection(fwd);
+  muzzlePos.addScaledVector(fwd, 1.2);
+  muzzlePos.y -= 0.25;
+  combat.muzzle.position.copy(muzzlePos);
+  combat.muzzle.intensity = 26;
+  combat.muzzleTimer = 0.06;
+
+  // What can a bullet hit? Rivals, peds, police cars, buildings, cars.
+  const targets = [];
+  for (const r of combat.rivals) if (r.hp > 0) targets.push(r.mesh);
+  for (const p of S.world.peds) if (p.state !== 'down') targets.push(p.mesh);
+  for (const c of S.police.cars) targets.push(c.mesh);
+  for (const c of [...S.world.traffic, ...S.world.parkedCars]) targets.push(c.mesh);
+  for (const mesh of S.world.buildingMeshes) targets.push(mesh);
+
+  combat.raycaster.set(cam.position, fwd);
+  combat.raycaster.far = 120;
+  const hits = combat.raycaster.intersectObjects(targets, true);
+  let end = muzzlePos.clone().addScaledVector(fwd, 90);
+  if (hits.length > 0) {
+    const hit = hits[0];
+    end = hit.point.clone();
+    // Walk up to the rival/ped/car that owns the mesh we hit.
+    let obj = hit.object;
+    while (obj && obj.parent && obj.parent !== S.scene) obj = obj.parent;
+    const rival = combat.rivals.find((r) => r.mesh === obj);
+    if (rival) {
+      rival.hp -= PISTOL_DAMAGE;
+      S.audio.hit();
+      S.toast(rival.hp <= 0 ? 'Viper down!' : 'Hit!');
+      if (rival.hp <= 0) {
+        rival.mesh.rotation.x = -Math.PI / 2;
+        rival.mesh.position.y = 0.3;
+        S.missions.rivalsKilled += 1;
+        S.money += 25;
       }
     }
-    if (r.flash > 0) {
-      r.flash -= dt;
-      r.mesh.children[0].material.color.setHex(0xffffff);
+    const ped = S.world.peds.find((p) => p.mesh === obj);
+    if (ped && ped.state !== 'down') {
+      ped.state = 'down';
+      ped.timer = 5;
+      ped.mesh.rotation.x = -Math.PI / 2;
+      ped.mesh.position.y = 0.4;
+      S.toast('You shot a pedestrian! Wanted +1');
+    }
+  }
+  addTracer(S, muzzlePos, end, 0xffe9a0);
+  S.audio.shot();
+  S.shake = Math.min(0.35, S.shake + 0.12);
+}
+
+/** R reloads the pistol (reserve ammo is unlimited — Ray plans ahead). */
+export function reload(S) {
+  const combat = S.combat;
+  if (combat.ammo === MAG_SIZE) return;
+  combat.ammo = MAG_SIZE;
+  combat.cooldown = Math.max(combat.cooldown, 0.5);
+  S.audio.click();
+  S.toast('Reloaded');
+}
+
+/** Rivals advance, take cover-ish strafes, and shoot back. */
+export function updateRivals(S, dt) {
+  const player = S.player;
+  for (const rival of S.combat.rivals) {
+    if (rival.hp <= 0) continue;
+    const dx = player.x - rival.x;
+    const dz = player.z - rival.z;
+    const dist = Math.hypot(dx, dz);
+    rival.heading = Math.atan2(dx, dz);
+
+    // Close to firing range, then hold and shoot; far away, advance.
+    if (dist > 16) {
+      rival.x += Math.sin(rival.heading) * 3.4 * dt;
+      rival.z += Math.cos(rival.heading) * 3.4 * dt;
+      rival.walkPhase += dt * 9;
     } else {
-      r.mesh.children[0].material.color.setHex(0xc22a3a);
+      // Strafe slowly so they are not standing targets.
+      rival.x += Math.cos(rival.heading) * Math.sin(S.time * 0.9 + rival.walkPhase) * 1.2 * dt;
+      rival.z -= Math.sin(rival.heading) * Math.sin(S.time * 0.9 + rival.walkPhase) * 1.2 * dt;
+    }
+    rival.mesh.position.set(rival.x, Math.abs(Math.sin(rival.walkPhase)) * 0.05, rival.z);
+    rival.mesh.rotation.y = rival.heading;
+
+    rival.shootTimer -= dt;
+    if (rival.shootTimer <= 0 && dist < 42) {
+      rival.shootTimer = RIVAL_SHOT_COOLDOWN + Math.random() * 0.9;
+      const from = new THREE.Vector3(rival.x, 1.35, rival.z);
+      const to = new THREE.Vector3(
+        player.x + (Math.random() - 0.5) * 1.6,
+        player.onFoot ? 1.2 : 1.0,
+        player.z + (Math.random() - 0.5) * 1.6,
+      );
+      addTracer(S, from, to, 0xff5544);
+      S.audio.enemyShot();
+      // Roughly half their shots land when Ray is in the open.
+      if (Math.random() < 0.42) {
+        S.damagePlayer(8, rival.x, rival.z);
+      }
     }
   }
 }
 
-// Fade tracers and the muzzle flash each frame.
-export function updateCombatFx(G, dt) {
-  const c = G.combat;
-  c.cooldown = Math.max(0, c.cooldown - dt);
-  for (let i = c.tracers.length - 1; i >= 0; i--) {
-    c.tracers[i].life -= dt;
-    if (c.tracers[i].life <= 0) {
-      G.scene.remove(c.tracers[i].line);
-      c.tracers.splice(i, 1);
+/** Fade tracers out and cool the muzzle flash down. */
+export function updateCombat(S, dt) {
+  const combat = S.combat;
+  combat.cooldown = Math.max(0, combat.cooldown - dt);
+  if (combat.muzzleTimer > 0) {
+    combat.muzzleTimer -= dt;
+    if (combat.muzzleTimer <= 0) combat.muzzle.intensity = 0;
+  }
+  for (let i = combat.tracers.length - 1; i >= 0; i--) {
+    const t = combat.tracers[i];
+    t.life -= dt;
+    t.line.material.opacity = Math.max(0, t.life / 0.09) * 0.9;
+    if (t.life <= 0) {
+      S.scene.remove(t.line);
+      t.line.geometry.dispose();
+      t.line.material.dispose();
+      combat.tracers.splice(i, 1);
     }
   }
-  if (c.flash) {
-    c.flashLife -= dt;
-    if (c.flashLife <= 0) c.flash.visible = false;
-  }
-}
-
-// Remove all rivals (on reset or after the mission ends).
-export function clearRivals(G) {
-  for (const r of G.combat.rivals) G.scene.remove(r.mesh);
-  G.combat.rivals = [];
+  updateRivals(S, dt);
 }

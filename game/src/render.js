@@ -1,120 +1,248 @@
-// HUD and minimap for NEON HARBOR: health, money, wanted stars, speed,
-// objective text and a top-down 2D minimap drawn on a canvas every frame.
-import { STREETS, PLACES } from './world.js';
+// render.js — the HUD, the minimap, the toast line and the menu screens.
+//
+// All DOM lives in index.html; this module owns reading game state into it
+// once a frame. Writes are cached so the DOM is only touched when a value
+// actually changes.
 
-// Cache the DOM nodes once; update their text and widths each frame.
-export function createHud() {
-  const el = (id) => document.getElementById(id);
-  return {
-    healthFill: el('health-fill'),
-    healthText: el('health-text'),
-    money: el('money'),
-    stars: el('stars'),
-    speed: el('speed'),
-    objective: el('objective'),
-    ammo: el('ammo'),
-    timer: el('timer'),
-    flash: el('flash'),
-    minimap: el('minimap'),
-    crosshair: el('crosshair'),
+import { ROAD_LINES } from './world.js';
+
+const MAP_SIZE = 170;
+const WORLD_SPAN = 420; // the minimap covers -210..210 in both axes
+
+let el = {};
+let last = {};
+let toastUntil = 0;
+
+/** Grab every HUD element once; call before the first frame. */
+export function initHud() {
+  const ids = [
+    'hud', 'health-fill', 'health-num', 'money', 'stars', 'speed', 'ammo',
+    'objective', 'timer', 'minimap', 'prompt', 'toast', 'arrow', 'arrow-dist',
+    'crosshair', 'damage', 'screen-title', 'screen-pause', 'screen-busted',
+    'screen-wasted', 'screen-done', 'btn-continue', 'done-money',
+    'done-detail', 'busted-money', 'wasted-money', 'title-save-note',
+  ];
+  for (const id of ids) el[id] = document.getElementById(id);
+}
+
+/** Wire the menu buttons to the game's callbacks (provided by main.js). */
+export function bindButtons(h) {
+  const on = (id, fn) => {
+    const b = document.getElementById(id);
+    if (b && fn) b.addEventListener('click', fn);
   };
+  on('btn-start', h.onStart);
+  on('btn-continue', h.onContinue);
+  on('btn-resume', h.onResume);
+  on('btn-restart', h.onRestart);
+  on('btn-quit', h.onQuit);
+  on('btn-again', h.onAgain);
+  on('btn-done-title', h.onQuit);
+  on('btn-busted-ok', h.onRespawn);
+  on('btn-wasted-ok', h.onRespawn);
 }
 
-// Stars as text: filled ★ for heat, empty ☆ for the rest.
-function starString(wanted) {
-  let s = '';
-  for (let i = 0; i < 5; i++) s += i < wanted ? '★' : '☆';
-  return s;
-}
-
-export function updateHud(G) {
-  const h = G.hud;
-  const p = G.player;
-  h.healthFill.style.width = Math.max(0, p.health) + '%';
-  h.healthFill.style.background = p.health > 50 ? '#39d353' : p.health > 25 ? '#ffb347' : '#ff4444';
-  h.healthText.textContent = Math.round(p.health);
-  h.money.textContent = '$' + p.money.toLocaleString('en-US');
-  h.stars.textContent = starString(G.police.wanted);
-  h.stars.style.color = G.police.wanted >= 3 ? '#ff4444' : '#ffd700';
-  const kmh = Math.round(Math.abs(p.speed || 0) * 3.6);
-  h.speed.textContent = p.inCar ? kmh + ' km/h' : 'On foot';
-  h.objective.textContent = G.missions.objective;
-  h.ammo.textContent = 'Ammo ' + p.ammo + ' / ∞';
-  if (G.missions.timer > 0) {
-    h.timer.textContent = '⏱ ' + Math.ceil(G.missions.timer) + 's';
-    h.timer.style.display = 'block';
-  } else {
-    h.timer.style.display = 'none';
-  }
-  if (G.hudFlash) {
-    h.flash.textContent = G.hudFlash;
-    h.flash.style.opacity = '1';
-    G.hudFlashTimer = 3;
-    G.hudFlash = null;
-  } else if (G.hudFlashTimer > 0) {
-    G.hudFlashTimer -= 1 / 60;
-    if (G.hudFlashTimer <= 0) h.flash.style.opacity = '0';
-  }
-  h.crosshair.style.display = (!p.inCar && G.gameState === 'playing') ? 'block' : 'none';
-  drawMinimap(G);
-}
-
-// Top-down minimap: streets, park, dock water, cars, cops, player arrow, waypoint.
-export function drawMinimap(G) {
-  const cv = G.hud.minimap;
-  if (!cv) return;
-  const c = cv.getContext('2d');
-  const S = cv.width; // square canvas, 160px
-  const scale = S / 280; // city spans -140..140
-  const toMap = (x, z) => [(x + 140) * scale, (z + 140) * scale];
-  c.fillStyle = '#14141f';
-  c.fillRect(0, 0, S, S);
-  // Park and dock water as landmarks.
-  c.fillStyle = '#2e5d3a';
-  const [px, pz] = toMap(0, 0);
-  c.fillRect(px - 13, pz - 13, 26, 26);
-  c.fillStyle = '#1d4a6e';
-  const [wx, wz] = toMap(-104, 132);
-  c.fillRect(wx - 26, wz - 8, 52, 16);
-  // Streets.
-  c.strokeStyle = '#55555f';
-  c.lineWidth = 4;
-  for (const s of STREETS) {
-    const [x1, z1] = toMap(-140, s);
-    const [x2, z2] = toMap(140, s);
-    c.beginPath(); c.moveTo(x1, z1); c.lineTo(x2, z2); c.stroke();
-    const [x3, z3] = toMap(s, -140);
-    const [x4, z4] = toMap(s, 140);
-    c.beginPath(); c.moveTo(x3, z3); c.lineTo(x4, z4); c.stroke();
-  }
-  // Waypoint blip: pulsing yellow diamond.
-  if (G.missions.markerPos) {
-    const [mx, mz] = toMap(G.missions.markerPos.x, G.missions.markerPos.z);
-    const r = 5 + Math.sin(G.time * 5) * 2;
-    c.fillStyle = '#ffe14d';
-    c.beginPath();
-    c.moveTo(mx, mz - r); c.lineTo(mx + r, mz); c.lineTo(mx, mz + r); c.lineTo(mx - r, mz);
-    c.closePath(); c.fill();
-  }
-  // Traffic and parked cars as small dots, police in blue.
-  const dot = (x, z, color, size) => {
-    const [dx, dz] = toMap(x, z);
-    c.fillStyle = color;
-    c.fillRect(dx - size / 2, dz - size / 2, size, size);
+/** Show one full-screen overlay, or none (HUD only). */
+export function showScreen(name) {
+  const screens = {
+    title: el['screen-title'],
+    pause: el['screen-pause'],
+    busted: el['screen-busted'],
+    wasted: el['screen-wasted'],
+    done: el['screen-done'],
   };
-  for (const car of G.traffic) dot(car.x, car.z, '#dddddd', 3);
-  for (const car of G.parked) dot(car.x, car.z, '#aaaaaa', 3);
-  for (const car of G.police.cars) dot(car.x, car.z, '#2244ff', 4);
-  for (const cop of G.police.cops) dot(cop.x, cop.z, '#4488ff', 3);
-  for (const r of G.combat.rivals) dot(r.x, r.z, '#ff2222', 4);
-  // Player arrow, rotated to the heading.
-  const [ax, az] = toMap(G.player.x, G.player.z);
-  c.save();
-  c.translate(ax, az);
-  c.rotate(Math.atan2(Math.sin(G.player.heading), Math.cos(G.player.heading)) * -1 + Math.PI);
-  c.fillStyle = '#39d5ff';
-  c.beginPath();
-  c.moveTo(0, -7); c.lineTo(5, 6); c.lineTo(-5, 6);
-  c.closePath(); c.fill();
-  c.restore();
+  for (const [key, node] of Object.entries(screens)) {
+    if (node) node.hidden = key !== name;
+  }
+  if (el.hud) el.hud.hidden = name === 'title';
+  // The crosshair only belongs on screen while actually playing.
+  if (el.crosshair) el.crosshair.style.display = name ? 'none' : '';
+}
+
+/** Show the Continue button only when a save exists. */
+export function setContinueVisible(visible, note) {
+  if (el['btn-continue']) el['btn-continue'].style.display = visible ? '' : 'none';
+  if (el['title-save-note']) el['title-save-note'].textContent = note || '';
+}
+
+/** Queue a toast line for a few seconds. */
+export function showToast(text, seconds) {
+  if (!el.toast) return;
+  el.toast.textContent = text;
+  el.toast.style.opacity = '1';
+  toastUntil = performance.now() + (seconds || 3.5) * 1000;
+}
+
+/** Fill the story-complete screen with the final numbers. */
+export function fillDoneScreen(money, best) {
+  if (el['done-money']) el['done-money'].textContent = `$${money.toLocaleString('en-US')}`;
+  if (el['done-detail']) {
+    el['done-detail'].textContent =
+      `All three jobs done. Mama Sari is paid, the Vipers are finished, ` +
+      `and Neon Harbor is yours. Best take so far: $${best.toLocaleString('en-US')}.`;
+  }
+}
+
+export function fillBustedScreen(money) {
+  if (el['busted-money']) el['busted-money'].textContent = `$${money.toLocaleString('en-US')} left`;
+}
+
+export function fillWastedScreen(money) {
+  if (el['wasted-money']) el['wasted-money'].textContent = `$${money.toLocaleString('en-US')} left`;
+}
+
+function setText(node, key, value) {
+  if (node && last[key] !== value) {
+    last[key] = value;
+    node.textContent = value;
+  }
+}
+
+/** Push the live numbers into the HUD. Call every frame; cheap when idle. */
+export function updateHud(S) {
+  if (!el.hud) return;
+  const hp = Math.max(0, Math.round(S.health));
+  if (last.hp !== hp) {
+    last.hp = hp;
+    el['health-fill'].style.width = `${hp}%`;
+    el['health-fill'].style.background = hp > 50 ? '#37d67a' : hp > 25 ? '#ffb02e' : '#ff4d4d';
+    el['health-num'].textContent = `${hp}`;
+  }
+  setText(el.money, 'money', `$${Math.floor(S.money).toLocaleString('en-US')}`);
+  const stars = '★'.repeat(S.wanted) + '☆'.repeat(5 - S.wanted);
+  setText(el.stars, 'stars', stars);
+  if (el.stars) el.stars.style.color = S.wanted > 0 ? '#ffd23e' : 'rgba(255,255,255,0.35)';
+  const kmh = S.player.car ? Math.round(Math.abs(S.player.speed) * 3.6) : 0;
+  setText(el.speed, 'speed', S.player.car ? `${kmh} km/h` : '—');
+  setText(el.ammo, 'ammo', `${S.combat.ammo} / ∞`);
+  setText(el.objective, 'objective', S.missions.objective);
+  const M = S.missions;
+  const timerText = M.stage === 'return' ? `⏱ ${Math.ceil(M.timer)}s` : '';
+  setText(el.timer, 'timer', timerText);
+  if (el.timer) el.timer.style.color = M.stage === 'return' && M.timer < 20 ? '#ff6b6b' : '#ffd23e';
+
+  // Interaction prompt (E — steal / grab / get out).
+  setText(el.prompt, 'prompt', S.promptText || '');
+  if (el.prompt) el.prompt.style.opacity = S.promptText ? '1' : '0';
+
+  // Waypoint arrow: points toward the objective relative to the camera.
+  if (M.waypoint && el.arrow) {
+    const dx = M.waypoint.x - S.player.x;
+    const dz = M.waypoint.z - S.player.z;
+    const bearing = Math.atan2(dx, dz);
+    const camBearing = Math.atan2(-Math.sin(S.player.camYaw), -Math.cos(S.player.camYaw));
+    let rel = bearing - camBearing;
+    while (rel > Math.PI) rel -= Math.PI * 2;
+    while (rel < -Math.PI) rel += Math.PI * 2;
+    el.arrow.style.transform = `rotate(${rel}rad)`;
+    el.arrow.style.opacity = '1';
+    const dist = Math.round(Math.hypot(dx, dz));
+    setText(el['arrow-dist'], 'arrowDist', `${dist}m`);
+  } else if (el.arrow) {
+    el.arrow.style.opacity = '0';
+    setText(el['arrow-dist'], 'arrowDist', '');
+  }
+
+  // Toast fade.
+  if (el.toast && toastUntil && performance.now() > toastUntil) {
+    el.toast.style.opacity = '0';
+    toastUntil = 0;
+  }
+
+  // Red damage flash.
+  if (el.damage) {
+    el.damage.style.opacity = S.damageFlash > 0 ? String(Math.min(1, S.damageFlash)) : '0';
+  }
+
+  drawMinimap(S);
+}
+
+/** Top-down map: roads, buildings, cars, cops, rivals and the waypoint. */
+export function drawMinimap(S) {
+  const canvas = el.minimap;
+  if (!canvas) return;
+  const g = canvas.getContext('2d');
+  const toPx = (v) => ((v + 210) / WORLD_SPAN) * MAP_SIZE;
+  const span = (v) => (v / WORLD_SPAN) * MAP_SIZE;
+
+  g.fillStyle = '#101018';
+  g.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+
+  // Water along the south edge.
+  g.fillStyle = '#14405e';
+  g.fillRect(0, toPx(186), MAP_SIZE, MAP_SIZE - toPx(186));
+  // Park.
+  g.fillStyle = '#2c5d3a';
+  g.fillRect(toPx(-45), toPx(-45), span(90), span(90));
+  // Roads.
+  g.strokeStyle = '#5a5766';
+  g.lineWidth = span(12);
+  for (const line of ROAD_LINES) {
+    g.beginPath(); g.moveTo(0, toPx(line)); g.lineTo(MAP_SIZE, toPx(line)); g.stroke();
+    g.beginPath(); g.moveTo(toPx(line), 0); g.lineTo(toPx(line), MAP_SIZE); g.stroke();
+  }
+  // Buildings.
+  g.fillStyle = '#2e2c38';
+  for (const box of S.world.colliders) {
+    g.fillRect(toPx(box.x0), toPx(box.z0), span(box.x1 - box.x0), span(box.z1 - box.z0));
+  }
+  // Garage + safehouse markers.
+  g.fillStyle = '#ffd23e';
+  g.fillRect(toPx(S.world.garage.x) - 3, toPx(S.world.garage.z) - 3, 6, 6);
+  g.fillStyle = '#37d6e0';
+  g.fillRect(toPx(S.world.safehouse.x) - 3, toPx(S.world.safehouse.z) - 3, 6, 6);
+  // Package, while it waits at the pier.
+  if (S.world.packageMesh.visible) {
+    g.fillStyle = '#ff9a3d';
+    g.beginPath();
+    g.arc(toPx(S.world.packageSpot.x), toPx(S.world.packageSpot.z), 3.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Waypoint: pulsing ring.
+  const M = S.missions;
+  if (M.waypoint) {
+    const pulse = 3 + Math.sin(S.time * 5) * 1.2;
+    g.strokeStyle = '#a8ff5e';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(toPx(M.waypoint.x), toPx(M.waypoint.z), pulse + 3, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#a8ff5e';
+    g.beginPath();
+    g.arc(toPx(M.waypoint.x), toPx(M.waypoint.z), 2.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Cars: traffic + parked in amber, police flashing blue/red.
+  g.fillStyle = '#e8c85a';
+  for (const car of [...S.world.traffic, ...S.world.parkedCars]) {
+    if (car.taken) continue;
+    g.fillRect(toPx(car.x) - 1.5, toPx(car.z) - 1.5, 3, 3);
+  }
+  for (const car of S.police.cars) {
+    g.fillStyle = Math.floor(S.time * 4) % 2 === 0 ? '#ff4455' : '#4488ff';
+    g.beginPath();
+    g.arc(toPx(car.x), toPx(car.z), 3.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = '#ff5544';
+  for (const rival of S.combat.rivals) {
+    if (rival.hp <= 0) continue;
+    g.beginPath();
+    g.arc(toPx(rival.x), toPx(rival.z), 2.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Player arrow, pointing along the heading.
+  const px = toPx(S.player.x);
+  const pz = toPx(S.player.z);
+  const h = S.player.heading;
+  g.fillStyle = '#ffffff';
+  g.strokeStyle = '#101018';
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(px + Math.sin(h) * 7, pz + Math.cos(h) * 7);
+  g.lineTo(px + Math.sin(h + 2.6) * 5, pz + Math.cos(h + 2.6) * 5);
+  g.lineTo(px + Math.sin(h - 2.6) * 5, pz + Math.cos(h - 2.6) * 5);
+  g.closePath();
+  g.fill();
+  g.stroke();
 }

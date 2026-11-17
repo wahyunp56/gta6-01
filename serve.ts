@@ -1,19 +1,21 @@
-// A tiny static server for NEON HARBOR's game/ folder (Node 22, standard
-// library only), for local play-testing and screenshots:
-//   node serve.ts            serves game/ on http://localhost:8080
-//   node serve.ts --port 8090 serves it on another port instead.
-// It sends the MIME types a browser game needs, refuses any path outside
-// game/, and does nothing else: a development convenience, not a web server.
-import { createReadStream, statSync } from 'node:fs';
+// serve.ts — a tiny static server for play-testing NEON HARBOR locally.
+//
+// Serves this repository's game/ folder at the root, so the game opens at
+// http://localhost:8080/ exactly as a plain static host would serve it:
+//   node serve.ts
+//   node serve.ts 8123        (another port)
+//
+// Only files under game/ are served; anything else is a 404. No directory
+// listings, no caching headers to fight while iterating.
+
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join, extname, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+const here = fileURLToPath(new URL('.', import.meta.url));
+const root = join(here, 'game');
+const port = Number(process.argv[2] ?? 8080);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -24,51 +26,28 @@ const MIME = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'model/gltf+json',
-  '.bin': 'application/octet-stream',
-  '.wasm': 'application/wasm',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.txt': 'text/plain; charset=utf-8',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname;
+const server = createServer(async (req, res) => {
   try {
-    pathname = decodeURIComponent(url.pathname);
-  } catch {
-    response.writeHead(400).end('bad request');
-    return;
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    let path = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
+    const file = join(root, normalize(path).replace(/^(\.\.[/\\])+/, ''));
+    if (!file.startsWith(root + sep) && file !== root) {
+      res.writeHead(403);
+      res.end('forbidden');
+      return;
+    }
+    const body = await readFile(file);
+    res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+    res.end(body);
+  } catch (_) {
+    res.writeHead(404);
+    res.end('not found');
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`game/ is on http://localhost:${port}`);
+});
+
+server.listen(port, () => {
+  console.log(`NEON HARBOR at http://localhost:${port}/`);
 });
