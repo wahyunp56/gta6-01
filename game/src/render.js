@@ -17,7 +17,7 @@ let toastUntil = 0;
 export function initHud() {
   const ids = [
     'hud', 'health-fill', 'health-num', 'money', 'stars', 'speed', 'ammo',
-    'objective', 'timer', 'minimap', 'prompt', 'toast', 'arrow', 'arrow-dist',
+    'objective', 'mission-kicker', 'timer', 'minimap', 'prompt', 'toast', 'arrow', 'arrow-dist',
     'crosshair', 'damage', 'screen-title', 'screen-pause', 'screen-busted',
     'screen-wasted', 'screen-done', 'btn-continue', 'done-money',
     'done-detail', 'busted-money', 'wasted-money', 'title-save-note',
@@ -111,12 +111,28 @@ export function updateHud(S) {
   setText(el.money, 'money', `$${Math.floor(S.money).toLocaleString('en-US')}`);
   const stars = '★'.repeat(S.wanted) + '☆'.repeat(5 - S.wanted);
   setText(el.stars, 'stars', stars);
-  if (el.stars) el.stars.style.color = S.wanted > 0 ? '#ffd23e' : 'rgba(255,255,255,0.35)';
+  if (el.stars) {
+    el.stars.style.color = S.wanted > 0 ? '#ffd23e' : 'rgba(255,255,255,0.35)';
+    el.stars.style.textShadow = S.wanted > 0 ? '0 0 12px rgba(255,210,62,0.9)' : 'none';
+  }
   const kmh = S.player.car ? Math.round(Math.abs(S.player.speed) * 3.6) : 0;
   setText(el.speed, 'speed', S.player.car ? `${kmh} km/h` : '—');
   setText(el.ammo, 'ammo', `${S.combat.ammo} / ∞`);
-  setText(el.objective, 'objective', S.missions.objective);
+  // Briefing kicker above the objective: "MISSION 1 / 3 — FIRST WHEELS".
+  // The mission name lives here, the instruction below it — one card.
+  // The number comes from the STAGE, not the index: staged scenes (and
+  // mission 3's escape) can disagree with the index, and the card must
+  // never say mission 1 while the job is mission 3.
+  const MISSION_TITLES = ['FIRST WHEELS', 'THE PICKUP', 'HARBOR HEAT'];
   const M = S.missions;
+  const missionNo = M.stage === 'done' ? 3
+    : M.stage === 'steal' || M.stage === 'drive' ? 1
+    : M.stage === 'pickup' || M.stage === 'return' ? 2 : 3;
+  const kicker = M.stage === 'done'
+    ? '★ STORY COMPLETE ★'
+    : `MISSION ${missionNo} / 3 — ${MISSION_TITLES[missionNo - 1]}`;
+  setText(el['mission-kicker'], 'kicker', kicker);
+  setText(el.objective, 'objective', S.missions.objective);
   const timerText = M.stage === 'return' ? `⏱ ${Math.ceil(M.timer)}s` : '';
   setText(el.timer, 'timer', timerText);
   if (el.timer) el.timer.style.color = M.stage === 'return' && M.timer < 20 ? '#ff6b6b' : '#ffd23e';
@@ -165,17 +181,17 @@ export function drawMinimap(S) {
   const toPx = (v) => ((v + 210) / WORLD_SPAN) * MAP_SIZE;
   const span = (v) => (v / WORLD_SPAN) * MAP_SIZE;
 
-  g.fillStyle = '#101018';
+  g.fillStyle = '#1a1218'; // dusk-warm map base, not cold black
   g.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-  // Water along the south edge.
-  g.fillStyle = '#14405e';
+  // Water along the south edge, rose in the sunset.
+  g.fillStyle = '#7a4a6e';
   g.fillRect(0, toPx(186), MAP_SIZE, MAP_SIZE - toPx(186));
   // Park.
-  g.fillStyle = '#2c5d3a';
+  g.fillStyle = '#3a7a4a';
   g.fillRect(toPx(-45), toPx(-45), span(90), span(90));
   // Roads.
-  g.strokeStyle = '#5a5766';
+  g.strokeStyle = '#6a5a66';
   g.lineWidth = span(12);
   for (const line of ROAD_LINES) {
     g.beginPath(); g.moveTo(0, toPx(line)); g.lineTo(MAP_SIZE, toPx(line)); g.stroke();

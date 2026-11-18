@@ -60,7 +60,7 @@ function buildState() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
-    62, window.innerWidth / window.innerHeight, 0.1, 900,
+    58, window.innerWidth / window.innerHeight, 0.1, 900,
   );
 
   const S = {
@@ -387,17 +387,18 @@ function boot() {
     if (S.mode !== 'paused') {
       S.time += dt;
       S.damageFlash = Math.max(0, S.damageFlash - dt * 1.8);
-      // The lighthouse beam sweeps all night, whatever the mode.
+      // The lighthouse beam sweeps at dusk, whatever the mode.
       if (S.world.lighthouseBeam) {
         S.world.lighthouseBeam.rotation.y += dt * 0.5;
       }
       if (S.mode === 'title') {
-        // Slow cinematic orbit over the city centre.
+        // Slow cinematic orbit over the city centre, low and close enough
+        // that the sunset skyline and the palm-lined avenues fill the frame.
         const t = S.time * 0.045;
-        const cx = Math.cos(t) * 120;
-        const cz = Math.sin(t) * 120;
-        S.camera.position.set(cx, 42, cz);
-        S.camera.lookAt(0, 8, 0);
+        const cx = Math.cos(t) * 85;
+        const cz = Math.sin(t) * 85;
+        S.camera.position.set(cx, 26, cz);
+        S.camera.lookAt(0, 12, 0);
         updateTraffic(S.world, S, dt);
         updatePeds(S.world, S, dt);
       } else if (S.mode === 'playing') {

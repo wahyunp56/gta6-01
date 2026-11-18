@@ -1,11 +1,12 @@
 # NEON HARBOR
 
-[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/c/gta6-01)
-[![rank](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/rank.svg)](https://make.fun/c/gta6-01)
-[![reward](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/reward.svg)](https://make.fun/c/gta6-01)
+[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![rank](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
+[![reward](https://make.fun/badge/gta6-01/wahyunp56/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
 **NEON HARBOR** is an original open-world crime game for make.fun's
-**gta6-01 "Make GTA 6"** competition ($1,666). It runs entirely from static
+**gta6-01 "Make GTA 6"** competition ($1,666) — see the bounty at
+<https://make.fun/bounty/gta6-01>. It runs entirely from static
 files — no build step, no network — in a desktop browser, built on vendored
 three.js.
 
@@ -33,10 +34,13 @@ Finish all three and the story completes with your final money as the score.
 
 ## The city
 
-A dusk-lit harbor city on a 9×9 street grid: lit-window towers, a park, a
-pier with crates and a lighthouse, the garage and the safehouse. Traffic
+A golden-hour harbor city on a 9×9 street grid: the sun hangs low ahead
+of the drive, palm trees line every avenue, lit-window towers carry neon
+signs and rooftop clutter, and the harbor water catches the sunset. A park,
+a pier with crates and a lighthouse, the garage and the safehouse. Traffic
 cars run block loops, pedestrians walk the sidewalks, and police respond to
-your wanted level (0–5 stars).
+your wanted level (0–5 stars). Ray's ride wears a gold roof stripe, and
+Harbor PD cruisers run black-and-white with flashing red/blue light bars.
 
 **Wanted goes up** when you steal a car (+1), hit a pedestrian (+1), shoot
 (+1), or ram a police car (+2). It fades slowly when you stay quiet and far
@@ -58,8 +62,9 @@ from officers. At wanted 3+, more and faster cruisers join the chase.
 
 ## HUD
 
-Health bar, money, wanted stars, speed, ammo, mission timer, objective
-text, a waypoint arrow with distance, and a live top-down minimap (roads,
+Health bar, money, wanted stars, speed, ammo, mission timer, a mission
+briefing card (mission number and name up top, the instruction below it),
+a waypoint arrow with distance, and a live top-down minimap (roads,
 buildings, cars, police, rivals, waypoint, and you).
 
 ## Sound

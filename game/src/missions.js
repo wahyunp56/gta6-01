@@ -130,17 +130,19 @@ export function tryPickup(S) {
   return true;
 }
 
-/** One line of objective text for the HUD, from the current stage. */
+/** One line of objective text for the HUD, from the current stage.
+ * Instruction only — the mission name lives in the HUD's briefing kicker
+ * (render.js), so the two lines read as one briefing card, not a repeat. */
 function updateObjectiveText(S) {
   const M = S.missions;
   const lines = {
-    steal: 'MISSION 1 — FIRST WHEELS: Steal any car (walk up, press E)',
-    drive: 'MISSION 1 — FIRST WHEELS: Deliver the car to the garage',
-    pickup: 'MISSION 2 — THE PICKUP: Grab the package at Pier 9 (on foot)',
-    return: 'MISSION 2 — THE PICKUP: Get the package to the garage!',
-    fight: 'MISSION 3 — HARBOR HEAT: Take down the Vipers',
-    escape: 'MISSION 3 — HARBOR HEAT: Lose the heat — reach the safehouse',
-    done: 'STORY COMPLETE — Neon Harbor is yours, Ray.',
+    steal: 'Steal any car — walk up, press E',
+    drive: 'Deliver the car to the garage',
+    pickup: 'Grab the package at Pier 9 (on foot)',
+    return: 'Get the package to the garage!',
+    fight: 'Take down the Vipers',
+    escape: 'Lose the heat — reach the safehouse',
+    done: 'Neon Harbor is yours, Ray.',
   };
   M.objective = lines[M.stage] || '';
 }

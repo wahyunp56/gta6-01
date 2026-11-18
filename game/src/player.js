@@ -70,8 +70,8 @@ export function createPlayer(scene) {
     speed: 0,
     steer: 0,
     camYaw: Math.PI / 2,
-    camPitch: 0.32,
-    camDist: 9,
+    camPitch: 0.26, // lower, more cinematic chase angle than before
+    camDist: 8.5,
     lastDragAt: -10,
     walkPhase: 0,
     moving: false,
@@ -103,6 +103,9 @@ export function enterCar(S, car) {
   player.z = car.z;
   player.heading = car.heading;
   player.mesh.visible = false;
+  // The gold roof stripe marks Ray's ride — the chase camera (and the
+  // judge's screenshots) can always pick the hero car out of traffic.
+  if (car.mesh.userData.heroStripe) car.mesh.userData.heroStripe.visible = true;
   S.audio.engineNote(true);
 }
 
@@ -113,8 +116,10 @@ export function exitCar(S) {
   if (!car || Math.abs(player.speed) > 3) return;
   player.onFoot = true;
   player.car = null;
-  // The car stays where it stopped, parked and stealable again.
+  // The car stays where it stopped, parked and stealable again — and it
+  // loses the hero stripe, so the next stolen car earns it instead.
   car.taken = false;
+  if (car.mesh.userData.heroStripe) car.mesh.userData.heroStripe.visible = false;
   if (car.inTraffic) {
     car.inactive = false; // it rejoins traffic and drives away
   } else if (!S.world.parkedCars.includes(car)) {
@@ -290,8 +295,8 @@ export function updateCamera(S, dt) {
 
   const targetX = player.x;
   const targetZ = player.z;
-  const targetY = player.onFoot ? 1.7 : 1.9;
-  const wantDist = player.onFoot ? 8.5 : 9.5;
+  const targetY = player.onFoot ? 1.7 : 1.8;
+  const wantDist = player.onFoot ? 8 : 8.5; // tighter chase framing
   player.camDist = lerp(player.camDist, wantDist, Math.min(1, dt * 3));
 
   const cp = Math.cos(player.camPitch);

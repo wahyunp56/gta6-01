@@ -40,9 +40,11 @@ function facadeTexture(rng, base, litRatio) {
   for (let row = 0; row < 12; row++) {
     for (let col = 0; col < 6; col++) {
       const lit = rng.chance(litRatio);
+      // Golden hour: lit windows burn amber, rose or warm white, and the
+      // dark ones stay a warm mauve instead of cold blue-black.
       g.fillStyle = lit
-        ? rng.chance(0.7) ? '#ffd27a' : '#9fd8ff'
-        : '#14141c';
+        ? rng.chance(0.55) ? '#ffc46b' : rng.chance(0.6) ? '#ff9db0' : '#ffe9c4'
+        : '#241a26';
       g.fillRect(8 + col * 20, 10 + row * 20, 12, 11);
     }
   }
@@ -51,7 +53,48 @@ function facadeTexture(rng, base, litRatio) {
   return tex;
 }
 
-/** Paint a small sign board ("GARAGE", "SAFEHOUSE", "PIER 9"). */
+/**
+ * Paint a vertical sunset gradient — deep violet overhead, hot magenta,
+ * then orange and gold at the horizon — onto a small canvas. Used as the
+ * scene background so the whole sky reads golden hour from every angle,
+ * even where no building or sun disc is in frame.
+ */
+function sunsetSkyTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 512;
+  const g = canvas.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0.0, '#341a5e'); // violet dusk overhead
+  grad.addColorStop(0.28, '#7a2a68'); // magenta
+  grad.addColorStop(0.5, '#c8556e'); // rose
+  grad.addColorStop(0.68, '#f07a4e'); // burning orange, higher up the sky
+  grad.addColorStop(0.85, '#ffc46b'); // gold at the horizon
+  grad.addColorStop(1.0, '#ffd98f');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 512);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Paint a soft radial glow (hot core fading to transparent) for the sun halo. */
+function glowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const g = canvas.getContext('2d');
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0.0, 'rgba(255, 214, 130, 0.95)');
+  grad.addColorStop(0.35, 'rgba(255, 160, 90, 0.5)');
+  grad.addColorStop(0.7, 'rgba(255, 110, 90, 0.16)');
+  grad.addColorStop(1.0, 'rgba(255, 110, 90, 0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 function signTexture(text, fg, bg) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -83,11 +126,10 @@ function groundTexture() {
   const toPx = (v) => ((v + 210) / 420) * S;
   const span = (v) => (v / 420) * S;
 
-  g.fillStyle = '#26242e'; // base asphalt
-  g.fillRect(0, 0, S, S);
+  g.fillStyle = '#3a3038'; // base asphalt, warmed by the sunset
 
-  // Block slabs (sidewalk colour) between the roads.
-  g.fillStyle = '#453f52';
+  // Block slabs (warm sidewalk colour) between the roads.
+  g.fillStyle = '#66525c';
   for (const bx of BLOCK_CENTERS) {
     for (const bz of BLOCK_CENTERS) {
       g.fillRect(toPx(bx - 16.5), toPx(bz - 16.5), span(33), span(33));
@@ -95,16 +137,16 @@ function groundTexture() {
   }
 
   // The park: four centre blocks become one green square.
-  g.fillStyle = '#2c5d3a';
+  g.fillStyle = '#3a7a4a';
   g.fillRect(toPx(-45), toPx(-45), span(90), span(90));
-  g.fillStyle = '#3a7350';
+  g.fillStyle = '#4a8a58';
   g.fillRect(toPx(-45), toPx(-3), span(90), span(6));
   g.fillRect(toPx(-3), toPx(-45), span(6), span(90));
 
-  // Harbor water along the south edge.
-  g.fillStyle = '#14405e';
+  // Harbor water along the south edge, catching the sunset: dusky rose.
+  g.fillStyle = '#7a4a6e';
   g.fillRect(0, toPx(186), S, S - toPx(186));
-  g.strokeStyle = 'rgba(140,200,240,0.35)';
+  g.strokeStyle = 'rgba(255, 190, 140, 0.45)';
   g.lineWidth = 2;
   for (let i = 0; i < 14; i++) {
     const y = toPx(192 + i * 1.4);
@@ -115,18 +157,32 @@ function groundTexture() {
   }
 
   // Roads: dark strips along every line, both directions.
-  g.fillStyle = '#26242e';
+  g.fillStyle = '#3a3038';
   for (const line of ROAD_LINES) {
     g.fillRect(0, toPx(line - ROAD_HALF), S, span(ROAD_HALF * 2));
     g.fillRect(toPx(line - ROAD_HALF), 0, span(ROAD_HALF * 2), S);
   }
 
   // Centre dashes, warm yellow, along every road.
-  g.fillStyle = '#c9a13a';
+  g.fillStyle = '#d8a83e';
   for (const line of ROAD_LINES) {
     for (let d = -200; d < 200; d += 12) {
       g.fillRect(toPx(d), toPx(line) - 1, span(6), 2);
       g.fillRect(toPx(line) - 1, toPx(d), 2, span(6));
+    }
+  }
+
+  // Crosswalks: white zebra stripes where the main avenues meet, so the
+  // streets read as a real city from the chase camera, not bare asphalt.
+  g.fillStyle = 'rgba(240, 235, 225, 0.85)';
+  for (const cross of [-90, 0, 90]) {
+    for (const line of [-135, -45, 45, 135]) {
+      for (let k = -2; k <= 2; k++) {
+        // Stripes across the east-west road at (line, cross).
+        g.fillRect(toPx(line + k * 2.4) - 1, toPx(cross - 5.5), 2, span(11));
+        // And across the north-south road at (cross, line).
+        g.fillRect(toPx(cross - 5.5), toPx(line + k * 2.4) - 1, span(11), 2);
+      }
     }
   }
 
@@ -151,6 +207,46 @@ export function buildCarMesh(color, isPolice) {
   body.position.y = 0.55;
   body.castShadow = true;
   car.add(body);
+
+  // Hood scoop and trunk lid: two shallow boxes that break the slab into
+  // a front, a cabin and a rear, so the car reads as a car, not a brick.
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.22, 1.1), paint);
+  hood.position.set(0, 0.92, 1.35);
+  hood.castShadow = true;
+  car.add(hood);
+  const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.2, 0.9), paint);
+  trunk.position.set(0, 0.9, -1.55);
+  trunk.castShadow = true;
+  car.add(trunk);
+
+  // Chrome bumpers front and rear, a dark grille, and side mirrors.
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.25, metalness: 0.9 });
+  for (const z of [2.18, -2.18]) {
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.22, 0.22), chrome);
+    bumper.position.set(0, 0.42, z);
+    car.add(bumper);
+  }
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 0.08), dark);
+  grille.position.set(0, 0.62, 2.17);
+  car.add(grille);
+  for (const x of [-0.98, 0.98]) {
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.3), dark);
+    mirror.position.set(x, 1.02, 0.75);
+    car.add(mirror);
+  }
+
+  // Hero stripe: a gold roof stripe that marks the car Ray is driving.
+  // Built hidden on every car; player.js / shots.js switch it on for the
+  // player's car so the chase camera always finds the hero at a glance.
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: 0xffd23e, emissive: 0xcc9900, emissiveIntensity: 0.7,
+    roughness: 0.4, metalness: 0.4,
+  });
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.06, 2.0), stripeMat);
+  stripe.position.set(0, 1.4, -0.25); // rides the cabin roof, no floating ends
+  stripe.visible = false;
+  car.add(stripe);
+  car.userData.heroStripe = stripe;
 
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.55, 2.1), isPolice ? dark : glass);
   cabin.position.set(0, 1.1, -0.25);
@@ -184,6 +280,16 @@ export function buildCarMesh(color, isPolice) {
   }
 
   if (isPolice) {
+    // Classic black-and-white Harbor PD cruiser: black hood and trunk
+    // over the white body, so a cruiser reads as police even before its
+    // light bar flashes.
+    const blackPaint = new THREE.MeshStandardMaterial({ color: 0x14141a, roughness: 0.35, metalness: 0.55 });
+    const blackHood = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.24, 1.12), blackPaint);
+    blackHood.position.set(0, 0.92, 1.35);
+    car.add(blackHood);
+    const blackTrunk = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.22, 0.92), blackPaint);
+    blackTrunk.position.set(0, 0.9, -1.55);
+    car.add(blackTrunk);
     const barBase = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.4), dark);
     barBase.position.set(0, 1.45, -0.25);
     car.add(barBase);
@@ -197,6 +303,45 @@ export function buildCarMesh(color, isPolice) {
     car.userData.lightBar = { red: r.material, blue: b.material };
   }
   return car;
+}
+
+/** Build one palm tree: a gently curving trunk and drooping fronds. */
+function buildPalmMesh(rng, mats) {
+  const palm = new THREE.Group();
+  // Two trunk segments, the upper one leaning a touch — no palm grows
+  // perfectly straight, and the lean catches the low sun.
+  const lean = rng.range(-0.3, 0.3);
+  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 2.6, 7), mats.trunk);
+  lower.position.set(0, 1.3, 0);
+  lower.castShadow = true;
+  palm.add(lower);
+  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.4, 7), mats.trunk);
+  upper.position.set(lean, 3.7, 0);
+  upper.rotation.z = -lean * 0.12;
+  upper.castShadow = true;
+  palm.add(upper);
+  // Seven fronds fanning out of the crown, each drooping toward the sun.
+  const crownX = lean * 2;
+  const crownY = 4.85;
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2 + rng.range(-0.15, 0.15);
+    const pivot = new THREE.Group();
+    pivot.position.set(crownX, crownY, 0);
+    pivot.rotation.y = angle;
+    const frond = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 2.9), mats.frond);
+    frond.position.set(0, -0.55, 1.35);
+    frond.rotation.x = 0.62; // tip droops down
+    frond.castShadow = true;
+    pivot.add(frond);
+    palm.add(pivot);
+  }
+  // A couple of coconuts tucked under the crown.
+  for (const [dx, dz] of [[0.2, 0.15], [-0.18, -0.12]]) {
+    const nut = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mats.nut);
+    nut.position.set(crownX + dx, crownY - 0.25, dz);
+    palm.add(nut);
+  }
+  return palm;
 }
 
 /** Build one pedestrian mesh (simple low-poly walker). */
@@ -290,31 +435,43 @@ export function buildWorld(scene, rng) {
   };
   scene.add(world.group);
 
-  // --- Sky, fog and lights -------------------------------------------------
-  scene.background = new THREE.Color(0x241a44);
-  scene.fog = new THREE.Fog(0x2b1d4e, 70, 430);
+  // --- Sunset sky, haze and lights ----------------------------------------
+  // Golden hour over the harbor: the sun hangs low ahead of the drive
+  // (north, +Z), so the chase camera looks straight into the sunset and
+  // every car and building throws a long shadow back toward the player.
+  scene.background = sunsetSkyTexture();
+  // Warm haze, but thin enough that the skyline stays readable from the
+  // title orbit — the first pass fogged the whole city into a pink wash.
+  scene.fog = new THREE.Fog(0xd88a5e, 130, 620);
 
-  const hemi = new THREE.HemisphereLight(0x8a6fd8, 0x1c1420, 1.15);
+  const hemi = new THREE.HemisphereLight(0xffb37a, 0x6b3a4a, 1.05);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xff9a4d, 1.9);
-  sun.position.set(-140, 90, -180);
+  const sun = new THREE.DirectionalLight(0xffb36b, 2.3);
+  sun.position.set(120, 48, 260);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -220;
   sun.shadow.camera.right = 220;
   sun.shadow.camera.top = 220;
   sun.shadow.camera.bottom = -220;
-  sun.shadow.camera.far = 600;
+  sun.shadow.camera.far = 700;
   scene.add(sun);
 
-  // Low sun disc on the western horizon, unlit so fog never dulls it.
+  // Low sun disc on the northern horizon, unlit so fog never dulls it,
+  // wrapped in a wide warm halo that bleeds across the skyline.
   const sunDisc = new THREE.Mesh(
-    new THREE.CircleGeometry(20, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffb347, fog: false }),
+    new THREE.CircleGeometry(34, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffd98f, fog: false }),
   );
-  sunDisc.position.set(-260, 34, -140);
+  sunDisc.position.set(150, 30, 320);
   sunDisc.lookAt(0, 20, 0);
   scene.add(sunDisc);
+  const sunHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture(), transparent: true, depthWrite: false, fog: false,
+  }));
+  sunHalo.position.set(150, 30, 320);
+  sunHalo.scale.set(140, 140, 1);
+  scene.add(sunHalo);
 
   // --- Ground ---------------------------------------------------------------
   const ground = new THREE.Mesh(
@@ -325,26 +482,35 @@ export function buildWorld(scene, rng) {
   ground.receiveShadow = true;
   world.group.add(ground);
 
-  // Harbor water: a glossy strip past the south edge.
+  // Harbor water: a glossy strip past the south edge, rose-gold in the
+  // sunset instead of cold blue.
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(420, 60),
-    new THREE.MeshStandardMaterial({ color: 0x14405e, roughness: 0.25, metalness: 0.35 }),
+    new THREE.MeshStandardMaterial({ color: 0x8a4a68, roughness: 0.15, metalness: 0.55 }),
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set(0, 0.05, 215);
   world.group.add(water);
 
   // --- Buildings ------------------------------------------------------------
+  // Warm stucco bases: terracotta, dusty rose, warm sand, mauve — the
+  // city glows in the sunset instead of sitting in cold blue shadow.
   const facades = [
-    facadeTexture(rng, '#4a4458', 0.55),
-    facadeTexture(rng, '#5d4a3a', 0.5),
-    facadeTexture(rng, '#3a4a5d', 0.6),
-    facadeTexture(rng, '#54424e', 0.45),
+    facadeTexture(rng, '#6a4a52', 0.62),
+    facadeTexture(rng, '#7a5a44', 0.58),
+    facadeTexture(rng, '#5d4a68', 0.6),
+    facadeTexture(rng, '#8a5a4a', 0.55),
   ];
   const facadeMats = facades.map(
     (map) => new THREE.MeshStandardMaterial({ map, roughness: 0.9 }),
   );
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e1c24, roughness: 1 });
+  // Rooftop clutter, shared across every building: AC boxes, water
+  // towers and antennas, so no roofline is a bare flat slab.
+  const acMat = new THREE.MeshStandardMaterial({ color: 0x8a8a92, roughness: 0.7, metalness: 0.4 });
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 0.9 });
+  const antennaMat = new THREE.MeshStandardMaterial({ color: 0x3a3a44, roughness: 0.6, metalness: 0.6 });
+  const tipMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, emissive: 0xff2222, emissiveIntensity: 2 });
 
   function addBuilding(cx, cz, w, h, d, matIndex) {
     const geo = new THREE.BoxGeometry(w, h, d);
@@ -357,6 +523,28 @@ export function buildWorld(scene, rng) {
     const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.5, d + 0.4), roofMat);
     roof.position.set(cx, h + 0.25, cz);
     world.group.add(roof);
+    // Rooftop clutter, seeded per building so the skyline stays varied.
+    if (rng.chance(0.5)) {
+      const ac = new THREE.Mesh(new THREE.BoxGeometry(rng.range(1.6, 2.6), 0.9, rng.range(1.6, 2.4)), acMat);
+      ac.position.set(cx + rng.range(-w / 4, w / 4), h + 0.95, cz + rng.range(-d / 4, d / 4));
+      ac.castShadow = true;
+      world.group.add(ac);
+    }
+    if (rng.chance(0.25) && h > 18) {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 2.4, 10), tankMat);
+      tank.position.set(cx + w / 4, h + 2.4, cz - d / 4);
+      tank.castShadow = true;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.1, 10), roofMat);
+      cone.position.set(cx + w / 4, h + 4.1, cz - d / 4);
+      world.group.add(tank, cone);
+    }
+    if (rng.chance(0.2)) {
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, rng.range(3, 6), 6), antennaMat);
+      mast.position.set(cx - w / 4, h + 2.2, cz + d / 4);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), tipMat);
+      tip.position.set(cx - w / 4, h + 2.2 + mast.geometry.parameters.height / 2, cz + d / 4);
+      world.group.add(mast, tip);
+    }
     world.colliders.push({
       x0: cx - w / 2, x1: cx + w / 2,
       z0: cz - d / 2, z1: cz + d / 2,
@@ -390,6 +578,32 @@ export function buildWorld(scene, rng) {
       }
       // else: an empty lot — breathing room, and a parking spot or two.
     }
+  }
+
+  // --- Neon signs on the skyline ---------------------------------------------
+  // A few towers carry invented neon signs (original names, no real
+  // brands) that light the dusk: pink, cyan and gold against the brick.
+  // They face +Z, toward the drive, so the chase camera catches them.
+  const NEON_SIGNS = [
+    ['PALM COURT', '#ff4d8d'], ['HARBOR MOTEL', '#37d6e0'],
+    ['NEON PIER', '#ffd23e'], ['CORAL INN', '#ff9db0'],
+    ['SUNSET DINER', '#a8ff5e'], ['BAY BREEZE', '#7ab8ff'],
+  ];
+  const signSpots = [...world.buildingMeshes];
+  for (let i = signSpots.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [signSpots[i], signSpots[j]] = [signSpots[j], signSpots[i]];
+  }
+  for (let i = 0; i < Math.min(NEON_SIGNS.length, signSpots.length); i++) {
+    const mesh = signSpots[i];
+    const p = mesh.geometry.parameters;
+    const [text, fg] = NEON_SIGNS[i];
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(11, 2.75),
+      new THREE.MeshBasicMaterial({ map: signTexture(text, fg, '#140f1c') }),
+    );
+    sign.position.set(mesh.position.x, p.height * 0.68, mesh.position.z + p.depth / 2 + 0.15);
+    world.group.add(sign);
   }
 
   // --- The garage (mission hub) ---------------------------------------------
@@ -503,6 +717,41 @@ export function buildWorld(scene, rng) {
   harborLight.position.set(170, 18, 198);
   scene.add(harborLight);
 
+  // --- Palm trees lining the avenues ----------------------------------------
+  // Miami would not be Miami without them: a palm every 90 m along each
+  // road, alternating sides, plus a loose cluster in the park. They sit
+  // just off the asphalt (offset 8.5, clear of the 6 m road and the lamps
+  // at 7.5) and throw long golden-hour shadows across the street. The
+  // staging spots sit at ±45, so palms keep to ±135 and never crowd the
+  // drive or wanted screenshots.
+  const palmMats = {
+    trunk: new THREE.MeshStandardMaterial({ color: 0x6a4a30, roughness: 1 }),
+    frond: new THREE.MeshStandardMaterial({ color: 0x3f8a4a, roughness: 0.9 }),
+    nut: new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 }),
+  };
+  for (const line of ROAD_LINES) {
+    for (const d of [-135, 135]) {
+      for (const side of [-1, 1]) {
+        // East-west avenue: palms march along X at (d, line ± 8.5).
+        const palmA = buildPalmMesh(rng, palmMats);
+        palmA.position.set(d, 0, line + side * 8.5);
+        world.group.add(palmA);
+        // North-south avenue: the same, mirrored.
+        const palmB = buildPalmMesh(rng, palmMats);
+        palmB.position.set(line + side * 8.5, 0, -d);
+        world.group.add(palmB);
+      }
+    }
+  }
+  for (let i = 0; i < 6; i++) {
+    const px = rng.range(-38, 38);
+    const pz = rng.range(-38, 38);
+    if (Math.abs(px) < 6 || Math.abs(pz) < 6) continue; // keep the paths clear
+    const palm = buildPalmMesh(rng, palmMats);
+    palm.position.set(px, 0, pz);
+    world.group.add(palm);
+  }
+
   // --- Park trees ---------------------------------------------------------------
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 1 });
   const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f7a44, roughness: 0.9 });
@@ -510,11 +759,13 @@ export function buildWorld(scene, rng) {
     const tx = rng.range(-40, 40);
     const tz = rng.range(-40, 40);
     if (Math.abs(tx) < 5 || Math.abs(tz) < 5) continue; // keep the paths clear
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 2.4, 8), trunkMat);
-    trunk.position.set(tx, 1.2, tz);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 2.0, 8), trunkMat);
+    trunk.position.set(tx, 1.0, tz);
     trunk.castShadow = true;
-    const leaves = new THREE.Mesh(new THREE.ConeGeometry(2.2, 5, 8), leafMat);
-    leaves.position.set(tx, 4.6, tz);
+    // Smaller crowns than the first pass: the big cones loomed over the
+    // drive screenshot and hid the street.
+    const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.8, 8), leafMat);
+    leaves.position.set(tx, 3.8, tz);
     leaves.castShadow = true;
     world.group.add(trunk, leaves);
   }

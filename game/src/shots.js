@@ -7,8 +7,8 @@
 
 export const SHOT_SEED = 20261117;
 
-const DRIVE_SPOT = { x: 0, z: -45, heading: 0 }; // heading north up 0th avenue
-const WANTED_SPOT = { x: 45, z: 45, heading: Math.PI / 2 };
+const DRIVE_SPOT = { x: 90, z: -45, heading: 0 }; // heading north up 90th avenue, clear of the park
+const WANTED_SPOT = { x: 45, z: 60, heading: Math.PI / 2 }; // z=60 keeps the camera off the lamp line at 45
 
 /** Put Ray in a parked car and roll it down the avenue at a good clip. */
 function stageDrive(S) {
@@ -22,7 +22,7 @@ function stageDrive(S) {
   S.player.z = DRIVE_SPOT.z;
   S.player.heading = DRIVE_SPOT.heading;
   S.player.camYaw = Math.PI; // camera behind the car, looking north
-  S.player.camPitch = 0.3;
+  S.player.camPitch = 0.24; // low and cinematic, into the sunset
   // Enter the car without the steal penalty: this is a staged photo.
   car.taken = true;
   S.player.car = car;
@@ -31,10 +31,12 @@ function stageDrive(S) {
   S.player.speed = 15;
   S.player.steer = 0;
   S.player.mesh.visible = false;
+  // Gold hero stripe on, so the staged car reads as Ray's ride.
+  if (car.mesh.userData.heroStripe) car.mesh.userData.heroStripe.visible = true;
   S.missions.index = 0;
   S.missions.stage = 'drive';
   S.missions.waypoint = { ...S.world.garage, label: 'The garage' };
-  S.missions.objective = 'MISSION 1 — FIRST WHEELS: Deliver the car to the garage';
+  S.missions.objective = 'Deliver the car to the garage';
   S.mode = 'playing';
   S.audio.engineNote(true);
 }
@@ -55,7 +57,7 @@ function stageWanted(S) {
   S.lastCrimeAt = S.time;
   S.missions.stage = 'escape';
   S.missions.waypoint = { ...S.world.safehouse, label: 'Safehouse' };
-  S.missions.objective = 'MISSION 3 — HARBOR HEAT: Lose the heat — reach the safehouse';
+  S.missions.objective = 'Lose the heat — reach the safehouse';
   // Two cruisers ahead of Ray, headlights on, closing in — the chase is
   // in frame, not somewhere behind the camera.
   const spots = [
@@ -74,14 +76,14 @@ function stageDone(S) {
   S.missions.index = 3;
   S.missions.stage = 'done';
   S.missions.waypoint = null;
-  S.missions.objective = 'STORY COMPLETE — Neon Harbor is yours, Ray.';
+  S.missions.objective = 'Neon Harbor is yours, Ray.';
   S.wanted = 0;
   S.health = 100;
   S.player.x = S.world.safehouse.x - 18;
   S.player.z = S.world.safehouse.z;
   S.player.heading = Math.PI / 2;
   S.player.camYaw = Math.PI / 2 + Math.PI;
-  S.player.camPitch = 0.28;
+  S.player.camPitch = 0.26;
   S.mode = 'done';
   S.best = Math.max(S.best || 0, S.money);
 }
@@ -99,8 +101,8 @@ export function applyShotMode(S, kind) {
     S.player.x = 0;
     S.player.z = -60;
     S.player.camYaw = 0.6;
-    S.player.camPitch = 0.42;
-    S.player.camDist = 26;
+    S.player.camPitch = 0.35;
+    S.player.camDist = 22;
     return true;
   }
   if (kind === 'drive') {
