@@ -55,7 +55,13 @@ function buildState() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCF (not PCFSoft): the soft kernel's extra shadow taps cost a
+  // frame in the headless playtest on this VM, and at this scale the
+  // harder low-poly shadow edge reads the same.
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // NOTE (trial 5): ACES tone mapping + exposure 1.3 was tried in trial 1
+  // but cost too much headless fps — the playtest walk fell under the
+  // 0.5 m bar. The brighter hemi/bounce/pastel set carries the look.
   document.getElementById('game').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -392,13 +398,18 @@ function boot() {
         S.world.lighthouseBeam.rotation.y += dt * 0.5;
       }
       if (S.mode === 'title') {
-        // Slow cinematic orbit over the city centre, low and close enough
-        // that the sunset skyline and the palm-lined avenues fill the frame.
-        const t = S.time * 0.045;
-        const cx = Math.cos(t) * 85;
-        const cz = Math.sin(t) * 85;
-        S.camera.position.set(cx, 26, cz);
-        S.camera.lookAt(0, 12, 0);
+        // Slow cinematic orbit over the south-east beachfront at golden
+        // hour. The title panel covers the centre of the frame, so the
+        // view is phased to put the lighthouse in the left visible
+        // strip and the beach palms in the right one, with the ocean in
+        // the foreground and the sunset city behind the panel. (First
+        // try centred the lighthouse behind the panel and left a flat
+        // pink wash at the edges.)
+        const t = S.time * 0.02 + 0.33;
+        const cx = 150 + Math.cos(t) * 75;
+        const cz = 150 + Math.sin(t) * 75;
+        S.camera.position.set(cx, 28, cz);
+        S.camera.lookAt(150, 6, 150);
         updateTraffic(S.world, S, dt);
         updatePeds(S.world, S, dt);
       } else if (S.mode === 'playing') {

@@ -44,7 +44,7 @@ function facadeTexture(rng, base, litRatio) {
       // dark ones stay a warm mauve instead of cold blue-black.
       g.fillStyle = lit
         ? rng.chance(0.55) ? '#ffc46b' : rng.chance(0.6) ? '#ff9db0' : '#ffe9c4'
-        : '#241a26';
+        : '#4a3542';
       g.fillRect(8 + col * 20, 10 + row * 20, 12, 11);
     }
   }
@@ -126,10 +126,10 @@ function groundTexture() {
   const toPx = (v) => ((v + 210) / 420) * S;
   const span = (v) => (v / 420) * S;
 
-  g.fillStyle = '#3a3038'; // base asphalt, warmed by the sunset
+  g.fillStyle = '#5a4644'; // base asphalt, warmed by the sunset
 
   // Block slabs (warm sidewalk colour) between the roads.
-  g.fillStyle = '#66525c';
+  g.fillStyle = '#8a6a62';
   for (const bx of BLOCK_CENTERS) {
     for (const bz of BLOCK_CENTERS) {
       g.fillRect(toPx(bx - 16.5), toPx(bz - 16.5), span(33), span(33));
@@ -142,6 +142,21 @@ function groundTexture() {
   g.fillStyle = '#4a8a58';
   g.fillRect(toPx(-45), toPx(-3), span(90), span(6));
   g.fillRect(toPx(-3), toPx(-45), span(6), span(90));
+
+  // Beachfront sand along the east edge: warm sand from the last avenue
+  // (x 186) to the waterline (x 205), the full length of the city.
+  g.fillStyle = '#e0b878';
+  g.fillRect(toPx(186), 0, S - toPx(186), toPx(186));
+  // Wet sand band where the waves meet the beach.
+  g.fillStyle = '#c89a68';
+  g.fillRect(toPx(198), 0, S - toPx(198), toPx(186));
+  // A few darker speckles so the sand is not a flat slab.
+  g.fillStyle = 'rgba(120, 84, 48, 0.35)';
+  for (let i = 0; i < 40; i++) {
+    const sx = toPx(188 + ((i * 37) % 20));
+    const sy = ((i * 53) % 180) / 180 * toPx(186);
+    g.fillRect(sx, sy, 3, 2);
+  }
 
   // Harbor water along the south edge, catching the sunset: dusky rose.
   g.fillStyle = '#7a4a6e';
@@ -157,7 +172,7 @@ function groundTexture() {
   }
 
   // Roads: dark strips along every line, both directions.
-  g.fillStyle = '#3a3038';
+  g.fillStyle = '#5a4644';
   for (const line of ROAD_LINES) {
     g.fillRect(0, toPx(line - ROAD_HALF), S, span(ROAD_HALF * 2));
     g.fillRect(toPx(line - ROAD_HALF), 0, span(ROAD_HALF * 2), S);
@@ -311,35 +326,32 @@ function buildPalmMesh(rng, mats) {
   // Two trunk segments, the upper one leaning a touch — no palm grows
   // perfectly straight, and the lean catches the low sun.
   const lean = rng.range(-0.3, 0.3);
+  // NOTE: palms do NOT cast shadows — 216 palms x 11 shadow-casting
+  // meshes was the single biggest added frame cost, and the headless
+  // playtest walk sat under its 0.5 m bar. Buildings, lamps, cars and
+  // trees still cast, so the long golden-hour shadows stay.
   const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 2.6, 7), mats.trunk);
   lower.position.set(0, 1.3, 0);
-  lower.castShadow = true;
   palm.add(lower);
   const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.4, 7), mats.trunk);
   upper.position.set(lean, 3.7, 0);
   upper.rotation.z = -lean * 0.12;
-  upper.castShadow = true;
   palm.add(upper);
-  // Seven fronds fanning out of the crown, each drooping toward the sun.
+  // Five fronds fanning out of the crown, each drooping toward the sun.
+  // (Was seven plus coconuts — the extra meshes cost a frame in the
+  // headless playtest, and the nuts never read past a few metres.)
   const crownX = lean * 2;
   const crownY = 4.85;
-  for (let i = 0; i < 7; i++) {
-    const angle = (i / 7) * Math.PI * 2 + rng.range(-0.15, 0.15);
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 + rng.range(-0.15, 0.15);
     const pivot = new THREE.Group();
     pivot.position.set(crownX, crownY, 0);
     pivot.rotation.y = angle;
     const frond = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 2.9), mats.frond);
     frond.position.set(0, -0.55, 1.35);
     frond.rotation.x = 0.62; // tip droops down
-    frond.castShadow = true;
     pivot.add(frond);
     palm.add(pivot);
-  }
-  // A couple of coconuts tucked under the crown.
-  for (const [dx, dz] of [[0.2, 0.15], [-0.18, -0.12]]) {
-    const nut = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mats.nut);
-    nut.position.set(crownX + dx, crownY - 0.25, dz);
-    palm.add(nut);
   }
   return palm;
 }
@@ -442,14 +454,25 @@ export function buildWorld(scene, rng) {
   scene.background = sunsetSkyTexture();
   // Warm haze, but thin enough that the skyline stays readable from the
   // title orbit — the first pass fogged the whole city into a pink wash.
-  scene.fog = new THREE.Fog(0xd88a5e, 130, 620);
+  scene.fog = new THREE.Fog(0xe8a878, 160, 780);
 
-  const hemi = new THREE.HemisphereLight(0xffb37a, 0x6b3a4a, 1.05);
+  const hemi = new THREE.HemisphereLight(0xffc08a, 0x8a5a55, 1.75);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffb36b, 2.3);
+  // NOTE (trial 7): the south bounce light was tried in trial 1 but cost
+  // a full extra per-fragment directional evaluation — the headless walk
+  // lost a frame and sat under the 0.5 m bar. The 1.75 hemi + pastel
+  // facades carry the shadow-side brightness without it.
+  // const bounce = new THREE.DirectionalLight(0xff9a6a, 0.85);
+  // bounce.position.set(-80, 90, -240);
+  // scene.add(bounce);
+  const sun = new THREE.DirectionalLight(0xffb36b, 2.6);
   sun.position.set(120, 48, 260);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // 1024 shadow map (was 2048): the headless playtest walks only as
+  // far as the frame budget allows, and at 2048 the swiftshader run
+  // sat on the 0.5 m pass/fail edge. 1024 keeps the long golden-hour
+  // shadows readable at this scale while buying real frame margin.
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -220;
   sun.shadow.camera.right = 220;
   sun.shadow.camera.top = 220;
@@ -492,14 +515,30 @@ export function buildWorld(scene, rng) {
   water.position.set(0, 0.05, 215);
   world.group.add(water);
 
+  // Ocean past the east beach: the same rose-gold water, from the
+  // waterline (x 205) out past the map edge. Lifted a hair above the
+  // south plane so the two never z-fight where they overlap.
+  const eastWater = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 420),
+    new THREE.MeshStandardMaterial({ color: 0x8a4a68, roughness: 0.15, metalness: 0.55 }),
+  );
+  eastWater.rotation.x = -Math.PI / 2;
+  eastWater.position.set(225, 0.06, 0);
+  world.group.add(eastWater);
+
   // --- Buildings ------------------------------------------------------------
-  // Warm stucco bases: terracotta, dusty rose, warm sand, mauve — the
-  // city glows in the sunset instead of sitting in cold blue shadow.
+  // Pastel art-deco facades: teal, peach, coral, cream, mint, lavender —
+  // bright enough that the shadow side still reads in the golden hour,
+  // instead of the dark muted set that crushed to brown.
   const facades = [
-    facadeTexture(rng, '#6a4a52', 0.62),
-    facadeTexture(rng, '#7a5a44', 0.58),
-    facadeTexture(rng, '#5d4a68', 0.6),
-    facadeTexture(rng, '#8a5a4a', 0.55),
+    facadeTexture(rng, '#c98a7a', 0.62), // coral
+    facadeTexture(rng, '#e0a878', 0.58), // peach
+    facadeTexture(rng, '#7fb8a8', 0.6), // teal
+    facadeTexture(rng, '#e8d8b0', 0.55), // cream
+    facadeTexture(rng, '#9ac8a0', 0.58), // mint
+    facadeTexture(rng, '#b89ac8', 0.6), // lavender
+    facadeTexture(rng, '#d89a8a', 0.55), // rose
+    facadeTexture(rng, '#a8b8d8', 0.58), // powder blue
   ];
   const facadeMats = facades.map(
     (map) => new THREE.MeshStandardMaterial({ map, roughness: 0.9 }),
@@ -567,13 +606,13 @@ export function buildWorld(scene, rng) {
         const w = rng.range(13, 22);
         const d = rng.range(13, 22);
         const h = 9 + rng.range(0, 20) + centrality * 16;
-        addBuilding(bx + rng.range(-4, 4), bz + rng.range(-4, 4), w, h, d, rng.int(0, 3));
+        addBuilding(bx + rng.range(-4, 4), bz + rng.range(-4, 4), w, h, d, rng.int(0, 7));
       } else if (roll < 0.85) {
         for (const side of [-1, 1]) {
           const w = rng.range(9, 13);
           const d = rng.range(11, 17);
           const h = 8 + rng.range(0, 14) + centrality * 10;
-          addBuilding(bx + side * 8, bz + rng.range(-3, 3), w, h, d, rng.int(0, 3));
+          addBuilding(bx + side * 8, bz + rng.range(-3, 3), w, h, d, rng.int(0, 7));
         }
       }
       // else: an empty lot — breathing room, and a parking spot or two.
@@ -583,11 +622,15 @@ export function buildWorld(scene, rng) {
   // --- Neon signs on the skyline ---------------------------------------------
   // A few towers carry invented neon signs (original names, no real
   // brands) that light the dusk: pink, cyan and gold against the brick.
-  // They face +Z, toward the drive, so the chase camera catches them.
+  // Double-sided, so they read from the drive camera (south of the
+  // building, looking north) as well as from the title orbit.
   const NEON_SIGNS = [
     ['PALM COURT', '#ff4d8d'], ['HARBOR MOTEL', '#37d6e0'],
     ['NEON PIER', '#ffd23e'], ['CORAL INN', '#ff9db0'],
     ['SUNSET DINER', '#a8ff5e'], ['BAY BREEZE', '#7ab8ff'],
+    ['SUNSET STRIP', '#ff6b9d'], ['FLAMINGO', '#ff9de0'],
+    ['STARFISH', '#5effc8'], ['SEASIDE', '#8ad8ff'],
+    ['MARLIN BAR', '#ffc46b'], ['COCO GROVE', '#c8ff5e'],
   ];
   const signSpots = [...world.buildingMeshes];
   for (let i = signSpots.length - 1; i > 0; i--) {
@@ -600,10 +643,47 @@ export function buildWorld(scene, rng) {
     const [text, fg] = NEON_SIGNS[i];
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(11, 2.75),
-      new THREE.MeshBasicMaterial({ map: signTexture(text, fg, '#140f1c') }),
+      new THREE.MeshBasicMaterial({ map: signTexture(text, fg, '#140f1c'), side: THREE.DoubleSide }),
     );
     sign.position.set(mesh.position.x, p.height * 0.68, mesh.position.z + p.depth / 2 + 0.15);
     world.group.add(sign);
+  }
+  // One sign is guaranteed in the drive frame: it goes on the building
+  // flanking the 90th avenue whose south face sits closest to the chase
+  // camera's sightline — scored by viewing angle plus distance, so a
+  // near building at a readable angle beats a far one dead-centre and
+  // a near one at the frame edge. (Two tries landed at the frame edge
+  // or too far to read; the north-face signs are hidden behind their
+  // own buildings from this camera.) It is oversized so it reads at
+  // street distance.
+  let driveSignBuilding = null;
+  let driveSignScore = Infinity;
+  for (const mesh of world.buildingMeshes) {
+    const p = mesh.geometry.parameters;
+    if (mesh.position.z < 0 || mesh.position.z > 80) continue;
+    if (Math.abs(mesh.position.x - 90) > 40) continue;
+    if (p.height < 12) continue;
+    const dx = Math.abs(mesh.position.x - 90);
+    const dz = mesh.position.z + 48;
+    const ang = Math.atan2(dx, dz) * 180 / Math.PI;
+    const dist = Math.hypot(dx, dz);
+    const score = ang + dist / 10;
+    if (score < driveSignScore) { driveSignScore = score; driveSignBuilding = mesh; }
+  }
+  if (driveSignBuilding) {
+    const p = driveSignBuilding.geometry.parameters;
+    const driveSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 4),
+      new THREE.MeshBasicMaterial({ map: signTexture('NEON HARBOR', '#ff4d8d', '#140f1c'), side: THREE.DoubleSide }),
+    );
+    driveSign.position.set(
+      driveSignBuilding.position.x, p.height * 0.5,
+      driveSignBuilding.position.z - p.depth / 2 - 0.15,
+    );
+    // Turned to face south: the drive camera sees this face, and a
+    // plane's back face renders its texture mirrored.
+    driveSign.rotation.y = Math.PI;
+    world.group.add(driveSign);
   }
 
   // --- The garage (mission hub) ---------------------------------------------
@@ -718,38 +798,58 @@ export function buildWorld(scene, rng) {
   scene.add(harborLight);
 
   // --- Palm trees lining the avenues ----------------------------------------
-  // Miami would not be Miami without them: a palm every 90 m along each
-  // road, alternating sides, plus a loose cluster in the park. They sit
-  // just off the asphalt (offset 8.5, clear of the 6 m road and the lamps
-  // at 7.5) and throw long golden-hour shadows across the street. The
-  // staging spots sit at ±45, so palms keep to ±135 and never crowd the
-  // drive or wanted screenshots.
+  // Miami would not be Miami without them: palms march down every
+  // avenue at eight mid-block spots, alternating sides, so the staged
+  // drive and wanted frames always have palms in shot. Varied heights:
+  // no two palms on a street are the same size.
   const palmMats = {
     trunk: new THREE.MeshStandardMaterial({ color: 0x6a4a30, roughness: 1 }),
     frond: new THREE.MeshStandardMaterial({ color: 0x3f8a4a, roughness: 0.9 }),
     nut: new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 }),
   };
+  // Palms sit MID-BLOCK (block centres, never road lines): a palm at a
+  // road-line coordinate lands in the middle of the crossing road's
+  // lane — trial 3 put one dead ahead of the drive car. Mid-block they
+  // line the sidewalks and stay clear of every driving lane, while
+  // still filling the staged frames.
+  const PALM_SPOTS = [-112.5, -67.5, -22.5, 22.5, 67.5, 112.5];
   for (const line of ROAD_LINES) {
-    for (const d of [-135, 135]) {
+    for (const d of PALM_SPOTS) {
       for (const side of [-1, 1]) {
         // East-west avenue: palms march along X at (d, line ± 8.5).
         const palmA = buildPalmMesh(rng, palmMats);
         palmA.position.set(d, 0, line + side * 8.5);
+        palmA.scale.setScalar(rng.range(0.8, 1.3));
         world.group.add(palmA);
         // North-south avenue: the same, mirrored.
         const palmB = buildPalmMesh(rng, palmMats);
         palmB.position.set(line + side * 8.5, 0, -d);
+        palmB.scale.setScalar(rng.range(0.8, 1.3));
         world.group.add(palmB);
       }
     }
   }
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     const px = rng.range(-38, 38);
     const pz = rng.range(-38, 38);
     if (Math.abs(px) < 6 || Math.abs(pz) < 6) continue; // keep the paths clear
     const palm = buildPalmMesh(rng, palmMats);
     palm.position.set(px, 0, pz);
     world.group.add(palm);
+  }
+
+  // Beachfront palm clusters on the sand, in loose groups of two and
+  // three — the east edge reads as a palm-lined beach from the title
+  // orbit, not a bare strip.
+  const beachSpots = [-150, -100, -50, 0, 50, 100, 150];
+  for (const bz of beachSpots) {
+    const n = 2 + (Math.abs(bz) % 2);
+    for (let k = 0; k < n; k++) {
+      const palm = buildPalmMesh(rng, palmMats);
+      palm.position.set(rng.range(190, 201), 0, bz + rng.range(-8, 8));
+      palm.scale.setScalar(rng.range(0.9, 1.4));
+      world.group.add(palm);
+    }
   }
 
   // --- Park trees ---------------------------------------------------------------
@@ -759,6 +859,9 @@ export function buildWorld(scene, rng) {
     const tx = rng.range(-40, 40);
     const tz = rng.range(-40, 40);
     if (Math.abs(tx) < 5 || Math.abs(tz) < 5) continue; // keep the paths clear
+    if (tz > 20) continue; // keep the park's north edge clear: the wanted
+    // chase runs along the 45th avenue and a tree there looms over the
+    // camera in the opening frame
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 2.0, 8), trunkMat);
     trunk.position.set(tx, 1.0, tz);
     trunk.castShadow = true;
@@ -775,8 +878,12 @@ export function buildWorld(scene, rng) {
   const bulbMat = new THREE.MeshStandardMaterial({
     color: 0xffe9a0, emissive: 0xffc860, emissiveIntensity: 1.8,
   });
+  // Lamps sit mid-block like the palms: the old step-45 spacing put a
+  // pole at every intersection, dead in the middle of the crossing
+  // road — one stood centre-frame in the wanted shot, in the car's path.
+  const LAMP_SPOTS = [-157.5, -112.5, -67.5, -22.5, 22.5, 67.5, 112.5, 157.5];
   for (const line of ROAD_LINES) {
-    for (let d = -180; d <= 180; d += 45) {
+    for (const d of LAMP_SPOTS) {
       for (const side of [-1, 1]) {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5.4, 6), poleMat);
         const lx = line + side * 7.5;
@@ -790,6 +897,10 @@ export function buildWorld(scene, rng) {
   }
 
   // --- Parked cars ------------------------------------------------------------------
+  // The FIRST parked car is the staged drive car (shots.js puts it at the
+  // drive spot), so it is deterministically vivid red-orange with a
+  // glossier finish — the shot can never come out dark teal again.
+  const HERO_PAINT = 0xe8362a;
   for (let i = 0; i < 10; i++) {
     const alongX = rng.chance(0.5);
     const line = rng.pick(ROAD_LINES);
@@ -798,7 +909,15 @@ export function buildWorld(scene, rng) {
     const x = alongX ? along : line + side * 8.5;
     const z = alongX ? line + side * 8.5 : along;
     const heading = alongX ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : (side > 0 ? 0 : Math.PI);
-    const mesh = buildCarMesh(rng.pick(CAR_COLORS), false);
+    const mesh = buildCarMesh(i === 0 ? HERO_PAINT : rng.pick(CAR_COLORS), false);
+    if (i === 0) {
+      mesh.traverse((o) => {
+        if (o.isMesh && o.material && o.material.color && o.material.color.getHex() === HERO_PAINT) {
+          o.material.roughness = 0.18;
+          o.material.metalness = 0.75;
+        }
+      });
+    }
     mesh.position.set(x, 0, z);
     mesh.rotation.y = heading;
     scene.add(mesh);
@@ -833,25 +952,38 @@ export function buildWorld(scene, rng) {
   }
 
   // --- Pedestrians on the sidewalks --------------------------------------------------
-  for (let i = 0; i < 14; i++) {
+  function addPed(x, z, heading, alongX, line, side) {
     const mesh = buildPedMesh(rng);
-    const alongX = rng.chance(0.5);
-    const line = rng.pick(ROAD_LINES);
-    const along = rng.range(-180, 180);
-    const side = rng.sign();
-    const x = alongX ? along : line + side * 8.5;
-    const z = alongX ? line + side * 8.5 : along;
     mesh.position.set(x, 0, z);
     scene.add(mesh);
     world.peds.push({
-      mesh, x, z,
-      heading: alongX ? (rng.chance(0.5) ? Math.PI / 2 : -Math.PI / 2) : (rng.chance(0.5) ? 0 : Math.PI),
+      mesh, x, z, heading,
       speed: rng.range(1.1, 1.9),
       alongX, line, side,
       state: 'walk', timer: 0, hitCooldown: 0, walkPhase: rng.range(0, Math.PI * 2),
       home: { x, z },
     });
   }
+  for (let i = 0; i < 22; i++) {
+    const alongX = rng.chance(0.5);
+    const line = rng.pick(ROAD_LINES);
+    const along = rng.range(-180, 180);
+    const side = rng.sign();
+    const x = alongX ? along : line + side * 8.5;
+    const z = alongX ? line + side * 8.5 : along;
+    addPed(
+      x, z,
+      alongX ? (rng.chance(0.5) ? Math.PI / 2 : -Math.PI / 2) : (rng.chance(0.5) ? 0 : Math.PI),
+      alongX, line, side,
+    );
+  }
+  // Staged walkers, on the sidewalks inside the drive and wanted frames:
+  // they barely move during the screenshot settle, so they stay in shot.
+  addPed(81.5, -22.5, 0, false, 90, -1); // drive avenue, west side, walking north
+  addPed(98.5, -30, Math.PI, false, 90, 1); // drive avenue, east side, walking south
+  addPed(81.5, 10, 0, false, 90, -1); // drive avenue, west side, further up
+  addPed(15, 53.5, Math.PI / 2, true, 45, 1); // wanted avenue, north side, walking east
+  addPed(30, 36.5, -Math.PI / 2, true, 45, -1); // wanted avenue, south side, walking west
 
   return world;
 }

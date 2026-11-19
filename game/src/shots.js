@@ -8,7 +8,11 @@
 export const SHOT_SEED = 20261117;
 
 const DRIVE_SPOT = { x: 90, z: -45, heading: 0 }; // heading north up 90th avenue, clear of the park
-const WANTED_SPOT = { x: 45, z: 60, heading: Math.PI / 2 }; // z=60 keeps the camera off the lamp line at 45
+// Wanted chase ON the 45th avenue, heading east along the road — the old
+// spot (45, 60) drove the car east through a block interior, so the shot
+// landed in an empty lot with a building in the way. On the road the car
+// stays on asphalt and both cruisers stay ahead in frame.
+const WANTED_SPOT = { x: 0, z: 45, heading: Math.PI / 2 };
 
 /** Put Ray in a parked car and roll it down the avenue at a good clip. */
 function stageDrive(S) {
@@ -22,7 +26,8 @@ function stageDrive(S) {
   S.player.z = DRIVE_SPOT.z;
   S.player.heading = DRIVE_SPOT.heading;
   S.player.camYaw = Math.PI; // camera behind the car, looking north
-  S.player.camPitch = 0.24; // low and cinematic, into the sunset
+  S.player.camPitch = 0.18; // lower and closer than the default chase, so the car reads large
+  S.player.camDist = 7;
   // Enter the car without the steal penalty: this is a staged photo.
   car.taken = true;
   S.player.car = car;
@@ -58,11 +63,11 @@ function stageWanted(S) {
   S.missions.stage = 'escape';
   S.missions.waypoint = { ...S.world.safehouse, label: 'Safehouse' };
   S.missions.objective = 'Lose the heat — reach the safehouse';
-  // Two cruisers ahead of Ray, headlights on, closing in — the chase is
-  // in frame, not somewhere behind the camera.
+  // Two cruisers ahead of Ray on the same avenue, staggered across the
+  // lanes — the chase is in frame, not somewhere behind the camera.
   const spots = [
-    { x: WANTED_SPOT.x + 20, z: WANTED_SPOT.z - 5 },
-    { x: WANTED_SPOT.x + 27, z: WANTED_SPOT.z + 6 },
+    { x: WANTED_SPOT.x + 20, z: WANTED_SPOT.z - 3 },
+    { x: WANTED_SPOT.x + 28, z: WANTED_SPOT.z + 3 },
   ];
   for (const spot of spots) {
     S.police.spawnPoliceCarAt(spot.x, spot.z);
@@ -96,10 +101,11 @@ export function applyShotMode(S, kind) {
   if (!kind) return false;
   if (kind === 'title') {
     S.mode = 'title';
-    // Slow cinematic orbit: the camera drifts around the park on its own.
+    // Slow cinematic orbit: the camera drifts over the south-east
+    // beachfront on its own. Ray stands on the sand, facing the city.
     S.shotOrbit = true;
-    S.player.x = 0;
-    S.player.z = -60;
+    S.player.x = 195;
+    S.player.z = 120;
     S.player.camYaw = 0.6;
     S.player.camPitch = 0.35;
     S.player.camDist = 22;

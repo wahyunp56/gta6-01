@@ -187,6 +187,11 @@ export function drawMinimap(S) {
   // Water along the south edge, rose in the sunset.
   g.fillStyle = '#7a4a6e';
   g.fillRect(0, toPx(186), MAP_SIZE, MAP_SIZE - toPx(186));
+  // Beach sand + ocean along the east edge.
+  g.fillStyle = '#e0b878';
+  g.fillRect(toPx(186), 0, toPx(205) - toPx(186), toPx(186));
+  g.fillStyle = '#7a4a6e';
+  g.fillRect(toPx(205), 0, MAP_SIZE - toPx(205), MAP_SIZE);
   // Park.
   g.fillStyle = '#3a7a4a';
   g.fillRect(toPx(-45), toPx(-45), span(90), span(90));
